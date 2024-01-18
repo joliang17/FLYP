@@ -147,8 +147,18 @@ def parse_arguments():
         help="Path to csv filewith training data",
     )
 
+    parser.add_argument(
+        "--ft_data_test",
+        type=str,
+        default=None,
+        help="Path to csv filewith training data",
+    )
+
     parser.add_argument('--ce_ablation', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--self_data', action=argparse.BooleanOptionalAction)
 
     parser.add_argument("--dataset-type",
                         choices=["webdataset", "csv", "auto"],

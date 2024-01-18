@@ -1,5 +1,8 @@
 from ast import arg
+import sys
 import os
+sys.path.append(os.getcwd())
+
 import numpy as np
 import torch
 from src.models.eval import evaluate

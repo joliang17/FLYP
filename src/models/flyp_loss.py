@@ -2,7 +2,7 @@ from asyncio.constants import LOG_THRESHOLD_FOR_CONNLOST_WRITES
 import os
 import copy
 import time
-import tqdm
+from tqdm import trange, tqdm
 
 import torch
 import pandas as pd
@@ -17,6 +17,7 @@ from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
 from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
 import src.datasets as datasets
+import pdb
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
@@ -32,18 +33,29 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     dataset_class = getattr(datasets, args.train_dataset)
     print(f"Training dataset {args.train_dataset}")
 
-    dataset = dataset_class(preprocess_fn,
-                            location=args.data_location,
-                            batch_size=args.batch_size)
+    # dataset = dataset_class(preprocess_fn,
+    #                         location=args.data_location,
+    #                         batch_size=args.batch_size)
 
+    cur_strength = None
+    if args.curriculum:
+        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        list_strength = list(set(df_ori['strength'].values.tolist()))
+        list_strength = sorted(list_strength, reverse=True)
+        cur_strength_id = 0
+        cur_strength = list_strength[cur_strength_id]
+        print(f"loading strength = {cur_strength}")
+        
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0)
+        epoch=0, strength=cur_strength)
     assert len(
         img_text_data), 'At least one train or eval dataset must be specified.'
     ft_dataloader = img_text_data['train_ft'].dataloader
     ft_iterator = iter(ft_dataloader)
-    num_batches = len(dataset.train_loader)
+    num_batches = len(ft_dataloader)
+    if args.curriculum:
+        num_batches = num_batches * len(list_strength)
     print(f"Num batches is {num_batches}")
 
     model = model.cuda()
@@ -72,7 +84,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                           args.epochs * num_batches, args.min_lr)
 
     stats = []
-    for epoch in range(0, args.epochs):
+    for epoch in trange(0, args.epochs):
         print("Epoch : ", epoch)
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
@@ -81,19 +93,34 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         model = model.cuda()
         classification_head.train()
 
-        for i in range(num_batches):
+        for i in trange(num_batches):
             start_time = time.time()
             step = i + epoch * num_batches
             if epoch != -1:
                 scheduler(step)
             optimizer.zero_grad()
 
+            # pdb.set_trace()
+
             try:
                 ft_batch = next(ft_iterator)
             except StopIteration:
+                if args.curriculum:
+                    cur_strength_id += 1
+                    if cur_strength_id < len(list_strength):
+                        cur_strength = list_strength[cur_strength_id]
+                    else:
+                        cur_strength_id = 0
+                        cur_strength = list_strength[cur_strength_id]
+                    
+                    print(f"loading strength = {cur_strength}")
+                    img_text_data = get_data(
+                        args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
+                        epoch=0, strength=cur_strength)
+                    ft_dataloader = img_text_data['train_ft'].dataloader
+
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
-
 
             ft_image, ft_text = ft_batch
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
@@ -102,7 +129,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_image, ft_text)
             ft_clip_loss = clip_loss_fn(ft_image_features,
                                         ft_text_features,
-                                        logit_scale2[0])
+                                        logit_scale2)
 
             ft_clip_loss.backward()
             optimizer.step()
@@ -122,6 +149,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         classification_head_new = get_zeroshot_classifier(
             args, model.module.model)
         classification_head_new = classification_head_new.cuda()
+
+        # pdb.set_trace()
 
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)

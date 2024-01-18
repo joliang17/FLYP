@@ -5,8 +5,11 @@ import torch
 import numpy as np
 from src.models import utils
 from src.datasets.common import get_dataloader, maybe_dictionarize
+from src.datasets.laion import get_data, get_csv_dataset
+
 import src.datasets as datasets
 import torch.nn.functional as F
+import pdb
 
 
 def eval_single_dataset(image_classifier, dataset, args, classification_head):
@@ -18,15 +21,20 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
     model.eval()
     classification_head.eval()
 
-    dataloader = get_dataloader(dataset,
-                                is_train=False,
-                                args=args,
-                                image_encoder=image_enc)
+    if not args.self_data:
+        ## equals to dataloader = dataset.test_loader
+        dataloader = get_dataloader(dataset,
+                                    is_train=False,
+                                    args=args,
+                                    image_encoder=image_enc)
 
+    else:
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, ).dataloader
+    
     batched_data = enumerate(dataloader)
     device = args.device
 
-    if hasattr(dataset, 'post_loop_metrics'):
+    if args.self_data or hasattr(dataset, 'post_loop_metrics'):
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
 
@@ -59,7 +67,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
                 correct += pred.eq(y.view_as(pred)).sum().item()
                 n += y.size(0)
 
-            if hasattr(dataset, 'post_loop_metrics'):
+            if args.self_data or hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
                 all_preds.append(logits.cpu().clone().detach())
                 metadata = data[
@@ -68,11 +76,19 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
 
         top1 = correct / n
 
-        if hasattr(dataset, 'post_loop_metrics'):
+        if args.self_data or hasattr(dataset, 'post_loop_metrics'):
             all_labels = torch.cat(all_labels)
             all_preds = torch.cat(all_preds)
-            metrics = dataset.post_loop_metrics(all_labels, all_preds,
-                                                all_metadata, args)
+            if not args.self_data:
+                metrics = dataset.post_loop_metrics(all_labels, all_preds,
+                                                    all_metadata, args)
+            else:
+                preds_temp = all_preds.argmax(dim=1, keepdim=True).view_as(all_labels)
+                correct = preds_temp.eq(all_labels).sum().item()
+                all_cnt = preds_temp.size(0)
+                acc = correct / all_cnt
+                metrics = {'acc': acc}
+
             if 'acc' in metrics:
                 metrics['top1'] = metrics['acc']
         else:
@@ -163,9 +179,12 @@ def evaluate(image_classifier,
     for i, dataset_name in enumerate(args.eval_datasets):
         print('Evaluating on', dataset_name)
         dataset_class = getattr(datasets, dataset_name)
-        dataset = dataset_class(image_classifier.module.val_preprocess,
-                                location=args.data_location,
-                                batch_size=args.batch_size)
+        if not args.self_data:
+            dataset = dataset_class(image_classifier.module.val_preprocess,
+                                    location=args.data_location,
+                                    batch_size=args.batch_size)
+        else:
+            dataset = None
 
         results = eval_single_dataset(image_classifier, dataset, args,
                                       classification_head)

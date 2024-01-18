@@ -36,14 +36,18 @@ class CsvDataset(Dataset):
                  img_key,
                  caption_key,
                  sep="\t",
-                 label_key=None):
+                 label_key=None,
+                 strength=None):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
+
+        if strength is not None:
+            df = df[df['strength']==strength]
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
 
-        num_columns = len(df.columns) - 2
+        num_columns = len(df.columns) - 3
 
         self.captions_list = []
         for k in range(1, num_columns):
@@ -53,6 +57,7 @@ class CsvDataset(Dataset):
         if label_key is not None:
             self.return_label = True
             self.labels = list(map(int, df[label_key].tolist()))
+            self.img_path = df["filepath"].tolist()
         self.transforms = transforms
         logging.debug('Done loading data.')
 
@@ -76,10 +81,11 @@ class CsvDataset(Dataset):
 
         if self.return_label:
             label = self.labels[idx]
+            f_path = self.img_path[idx]
             if len(self.captions_list) > 0:
-                return images, texts, texts_list, label
+                return images, texts, texts_list, label, f_path
             else:
-                return images, texts, label
+                return images, texts, label, f_path
 
         if len(self.captions_list) > 0:
             return images, texts, texts_list
@@ -454,8 +460,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0):
-    input_filename = args.ft_data if is_train else args.val_data
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None):
+    input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
     if args.get_labeled_csv:
@@ -464,12 +470,16 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0):
     else:
         label_key = None
 
+    if not is_train:
+        label_key = 'label'
+
     dataset = CsvDataset(input_filename,
                          preprocess_fn,
                          img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key,
                          sep=args.csv_separator,
-                         label_key=label_key)
+                         label_key=label_key, 
+                         strength=strength)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -509,7 +519,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0):
+def get_data(args, preprocess_fns, epoch=0, strength=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -517,6 +527,6 @@ def get_data(args, preprocess_fns, epoch=0):
                                       args.dataset_type)(args,
                                                          preprocess_train,
                                                          is_train=True,
-                                                         epoch=epoch)
+                                                         epoch=epoch, strength=strength)
 
     return data

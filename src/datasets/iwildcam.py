@@ -47,7 +47,7 @@ class IWildCam:
                  num_workers=16,
                  classnames=None,
                  subset='train'):
-        self.dataset = wilds.get_dataset(dataset='iwildcam', root_dir=location)
+        self.dataset = wilds.get_dataset(dataset='iwildcam', root_dir=location, download=True)
         self.train_dataset = self.dataset.get_subset('train', transform=preprocess)
         self.train_loader = get_train_loader("standard", self.train_dataset, num_workers=num_workers, batch_size=batch_size)
 

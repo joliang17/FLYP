@@ -3,6 +3,7 @@ import torch
 from tqdm import tqdm
 
 import numpy as np
+import pandas as pd
 
 import clip.clip as clip
 
@@ -12,6 +13,7 @@ import src.datasets as datasets
 from src.args import parse_arguments
 from src.models.modeling import ClassificationHead, CLIPEncoder, ImageClassifier
 from src.models.eval import evaluate
+import pdb
 
 
 
@@ -31,17 +33,29 @@ def get_zeroshot_classifier(args, clip_model):
                                 location=args.data_location,
                                 batch_size=args.batch_size,
                                 k=args.k)
+        classes = dataset.classnames
+        
     else:
-        dataset = dataset_class(None,
-                                location=args.data_location,
-                                batch_size=args.batch_size)
+        
+        if args.self_data:
+            label_to_name = pd.read_csv("src/datasets/iwildcam_metadata/labels_new.csv")
+            label_to_name = label_to_name[['y', 'english']]
+            label_to_name = label_to_name[label_to_name['y'] < 99999]
+            classes = label_to_name['english'].values.tolist()
+
+        else:
+            dataset = dataset_class(None,
+                                    location=args.data_location,
+                                    batch_size=args.batch_size)
+            classes = dataset.classnames
+
     device = args.device
     clip_model.eval()
     clip_model.to(device)
 
     with torch.no_grad():
         zeroshot_weights = []
-        for classname in tqdm(dataset.classnames):
+        for classname in tqdm(classes):
             texts = []
             for t in template:
                 texts.append(t(classname))
