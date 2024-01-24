@@ -3,6 +3,8 @@ import os
 import pandas as pd
 import argparse
 import pdb
+import pickle
+from sklearn.model_selection import train_test_split
 
 
 def main(args):
@@ -29,6 +31,26 @@ def main(args):
     list_y = []
     if args.mode == 'train':
         if args.curriculum:
+        # if True:
+            clip_path = '../data/metadata/clip_score_train.pkl'
+            threshold = 0.25
+            dict_filt = dict()
+            if os.path.exists(clip_path):
+                with open(clip_path, 'rb') as f:
+                    dict_clip_res = pickle.load(f)
+                list_filtered = list(dict_clip_res.items())
+                list_filtered = [[item[0].split('='), item[1][0][0]] for item in list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
+                list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
+                for pair in list_filtered:
+                    cur_sp = pair[0]
+                    cur_cate = pair[1]
+                    cur_imgid = pair[2]
+                    if cur_cate not in dict_filt:
+                        dict_filt[cur_cate] = dict()
+                    if cur_sp not in dict_filt[cur_cate]:
+                        dict_filt[cur_cate][cur_sp] = []
+                    dict_filt[cur_cate][cur_sp].append(cur_imgid)
+
             for cur_sp_f in img_sp_folder:
                 cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
                 cur_sp_name = cur_sp_f.replace('_', ' ')
@@ -41,9 +63,17 @@ def main(args):
                     cur_cate_path = os.path.join(cur_sp_path, cate)
                     list_sub_img = os.listdir(cur_cate_path)
                     list_sub_img = [item for item in list_sub_img if 'jpg' in item]
+
                     for img_name in list_sub_img:
                         cur_img_path = os.path.join(cur_cate_path, img_name)
-                        list_result.append([cur_y, cur_img_path, cur_strength])
+                        if len(dict_filt) > 0:
+                            if cate in dict_filt:
+                                if cur_sp_f in dict_filt[cate]:
+                                    if img_name.replace('.jpg', '') in dict_filt[cate][cur_sp_f]:
+                                        list_result.append([cur_y, cur_img_path, cur_strength])
+
+                        else:
+                            list_result.append([cur_y, cur_img_path, cur_strength])
         
         img_sp_folder_ori = os.listdir("../data/train")
         img_sp_folder_ori = [item for item in img_sp_folder_ori if item in img_sp_folder]
@@ -79,6 +109,28 @@ def main(args):
                 list_result.append([cur_y, cur_img_path, cur_strength])
 
     df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength'])
+    
+    if args.random:
+        print(len(df))
+        df_group = df.groupby('strength')
+
+        # Create a list of dataframes
+        df_list = pd.DataFrame()
+
+        # Iterate over the groups
+        for name, group in df_group:
+            print(f"len group {len(group)}")
+            # Split the group into two dataframes based on a random split
+            train = group.sample(frac=0.15, random_state=1)
+            print(f"len train {len(train)}")
+
+            # Add the dataframes to the list
+            # df_list.append(df_train)
+            df_list = pd.concat([df_list, train])
+
+        # Create a new dataframe from the list
+        df = df_list
+        print(len(df))
 
     if args.mode == 'train':
         label_to_name = label_to_name[label_to_name['y'].isin(list_y)]
@@ -121,6 +173,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode',
                         default='train')    
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--save_folder',
                         default='./datasets/csv/iwildcam_v2.0/')
     parser.add_argument('--input_folder',
