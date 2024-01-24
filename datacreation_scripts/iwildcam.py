@@ -75,20 +75,33 @@ def main(args):
                         else:
                             list_result.append([cur_y, cur_img_path, cur_strength])
         
-        img_sp_folder_ori = os.listdir("../data/train")
-        img_sp_folder_ori = [item for item in img_sp_folder_ori if item in img_sp_folder]
-        cur_strength = 0
-        for cur_sp_f in img_sp_folder_ori:
-            cur_sp_path = os.path.join("../data/train", cur_sp_f)
-            cur_sp_name = cur_sp_f.replace('_', ' ')
-            cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
-            if cur_y not in list_y:
-                list_y.append(cur_y)
-            list_imgs = os.listdir(cur_sp_path)
-            list_imgs = [item for item in list_imgs if 'jpg' in item]
-            for img_name in list_imgs:
-                cur_img_path = os.path.join(cur_sp_path, img_name)
-                list_result.append([cur_y, cur_img_path, cur_strength])
+        # #############################################
+        # # if using part of the original training data
+        # img_sp_folder_ori = os.listdir("../data/train")
+        # img_sp_folder_ori = [item for item in img_sp_folder_ori if item in img_sp_folder]
+        # cur_strength = 0
+        # for cur_sp_f in img_sp_folder_ori:
+        #     cur_sp_path = os.path.join("../data/train", cur_sp_f)
+        #     cur_sp_name = cur_sp_f.replace('_', ' ')
+        #     cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+        #     if cur_y not in list_y:
+        #         list_y.append(cur_y)
+        #     list_imgs = os.listdir(cur_sp_path)
+        #     list_imgs = [item for item in list_imgs if 'jpg' in item]
+        #     for img_name in list_imgs:
+        #         cur_img_path = os.path.join(cur_sp_path, img_name)
+        #         list_result.append([cur_y, cur_img_path, cur_strength])
+
+        # #############################################
+        # # if using all training data
+        df_train_ori = pd.read_csv('./datasets/csv/iwildcam_v2.0/train.csv', sep='\t')
+        del df_train_ori['title']
+        df_train_ori.drop_duplicates(subset=['filepath', 'label'], keep='last', inplace=True)
+        df_train_ori.rename({'filepath': 'filename','label': 'y'}, axis='columns', inplace=True)
+        df_train_ori['strength'] = 0
+        df_train_ori = df_train_ori[['y', 'filename', 'strength']]
+        cur_train_ori = df_train_ori.values.tolist()
+        list_result.extend(cur_train_ori)
 
     else:
         img_sp_folder_train = os.listdir("../data/train_new")
@@ -153,10 +166,7 @@ def main(args):
     del df2
     del df
 
-    df_final = df_final.rename({
-        'filename': 'filepath',
-        'y': 'label'
-    },
+    df_final = df_final.rename({'filename': 'filepath','y': 'label'},
                                axis='columns')[['title', 'filepath', 'label', 'strength']]
 
     # assert len(df_final) == 129809 * 2, 'number of samples incorrect'
