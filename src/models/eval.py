@@ -40,6 +40,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
 
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
+        dict_class = dict()
         for i, data in batched_data:
 
             data = maybe_dictionarize(data)
@@ -66,6 +67,19 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
             else:
                 correct += pred.eq(y.view_as(pred)).sum().item()
                 n += y.size(0)
+
+                classes = torch.unique(y)
+                for cls_i in classes:
+                    cls_i = cls_i.item()
+                    sap_ids = (y == cls_i).nonzero(as_tuple=True)
+                    cur_pred = pred[sap_ids]
+                    cur_correct = (cur_pred == cls_i).sum().item()
+                    cur_num = len(sap_ids[0])
+                    if cls_i not in dict_class:
+                        dict_class[cls_i] = [0, 0]
+                    
+                    dict_class[cls_i][0] += cur_correct
+                    dict_class[cls_i][1] += cur_num
 
             if args.self_data or hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -95,6 +109,9 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
             metrics = {}
     if 'top1' not in metrics:
         metrics['top1'] = top1
+    
+    if len(dict_class) > 0:
+        metrics['class_top1'] = dict_class
 
     return metrics
 
@@ -195,6 +212,16 @@ def evaluate(image_classifier,
                 logger.info(
                     f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}")
             train_stats[dataset_name + " Accuracy"] = round(results['top1'], 4)
+        
+        if 'class_top1' in results:
+            list_acc = [[key, value[0]/value[1]] for key, value in results['class_top1'].items()]
+            list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
+            for pair in list_acc:
+                print(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                if logger != None:
+                    logger.info(
+                        f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
 
         for key, val in results.items():
             if 'worst' in key or 'f1' in key.lower() or 'pm0' in key:
