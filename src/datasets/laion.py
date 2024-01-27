@@ -37,12 +37,16 @@ class CsvDataset(Dataset):
                  caption_key,
                  sep="\t",
                  label_key=None,
-                 strength=None):
+                 strength=None,
+                 list_selection=None):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
         if strength is not None:
             df = df[df['strength']==strength]
+
+        if list_selection is not None:
+            df = df[df['y'].isin(list_selection)]
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -460,7 +464,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None):
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None):
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
@@ -479,7 +483,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None):
                          caption_key=args.csv_caption_key,
                          sep=args.csv_separator,
                          label_key=label_key, 
-                         strength=strength)
+                         strength=strength, 
+                         list_selection=list_selection)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -519,7 +524,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, strength=None):
+def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -527,6 +532,7 @@ def get_data(args, preprocess_fns, epoch=0, strength=None):
                                       args.dataset_type)(args,
                                                          preprocess_train,
                                                          is_train=True,
-                                                         epoch=epoch, strength=strength)
+                                                         epoch=epoch, 
+                                                         strength=strength, list_selection=list_selection)
 
     return data

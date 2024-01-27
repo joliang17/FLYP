@@ -158,6 +158,14 @@ def parse_arguments():
 
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument(
+        "--curriculum_epoch",
+        type=int,
+        default=None,
+        help=
+        "Number of samples in dataset. Required for webdataset if not available in info file.",
+    )
+
     parser.add_argument('--self_data', action=argparse.BooleanOptionalAction)
 
     parser.add_argument("--dataset-type",

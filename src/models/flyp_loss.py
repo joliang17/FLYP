@@ -18,6 +18,7 @@ from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
 import src.datasets as datasets
 import pdb
+import math
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
@@ -38,12 +39,28 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     #                         batch_size=args.batch_size)
 
     cur_strength = None
+    len_data = None
+    cur_str_times = 1
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        len_data = len(df_ori)
         list_strength = list(set(df_ori['strength'].values.tolist()))
         list_strength = sorted(list_strength, reverse=True)
-        cur_strength_id = 0
-        cur_strength = list_strength[cur_strength_id]
+        if args.curriculum_epoch is None:
+            cur_strength_id = 0
+            cur_strength = list_strength[cur_strength_id]
+        else:
+            # using curriculum_epoch to decide the current strength
+            # finish viewing all strength data during curriculum_epoch
+            len_ori = len(df_ori[df_ori['strength']==0])
+            num_batch_ori = int(len_ori/args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+            len_all_stre = len(df_ori[df_ori['strength']!=0])
+            total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
+            loop_times = math.ceil(total_viewing / len_all_stre)
+
+            cur_strength_id = 0
+            cur_strength = list_strength[cur_strength_id]
+
         print(f"loading strength = {cur_strength}")
         
     img_text_data = get_data(
@@ -55,13 +72,24 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
     if args.curriculum:
-        num_batches = num_batches * len(list_strength)
+        if args.curriculum_epoch is None:
+            num_batches = int(len_data/args.batch_size) if len_data is not None else num_batches * len(list_strength)
+        else:
+            num_batches = num_batch_ori
+
     print(f"Num batches is {num_batches}")
 
     model = model.cuda()
     classification_head = classification_head.cuda()
     devices = list(range(torch.cuda.device_count()))
     logger.info('Using devices' + str(devices))
+
+    # ############################
+    # # TODO: load finetuned model here
+    # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_16.pt')
+    # logger.info('Loading model ' + str(model_path))
+    # model.load_state_dict(torch.load(model_path))
+
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head,
                                                 device_ids=devices)
@@ -85,6 +113,25 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     stats = []
     for epoch in trange(0, args.epochs):
+        # If set curriculum epochs
+        if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
+            print('Restart scheduler')
+            scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                        (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
+
+            if cur_strength != 0:
+                print('Restart dataloader')
+                cur_strength = 0
+                cur_str_times = 1
+                
+                print(f"loading strength = {cur_strength}, loop times {cur_str_times}")
+                img_text_data = get_data(
+                    args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
+                    epoch=0, strength=cur_strength)
+                ft_dataloader = img_text_data['train_ft'].dataloader
+                ft_iterator = iter(ft_dataloader)
+                num_batches = len(ft_dataloader)
+
         print("Epoch : ", epoch)
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
@@ -106,14 +153,26 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_batch = next(ft_iterator)
             except StopIteration:
                 if args.curriculum:
-                    cur_strength_id += 1
-                    if cur_strength_id < len(list_strength):
+                    if args.curriculum_epoch is None:
+                        cur_strength_id += 1
+                        if cur_strength_id >= len(list_strength):
+                            cur_strength_id = 0
                         cur_strength = list_strength[cur_strength_id]
                     else:
-                        cur_strength_id = 0
-                        cur_strength = list_strength[cur_strength_id]
+                        if epoch <= args.curriculum_epoch:
+                            if cur_str_times < loop_times:
+                                cur_str_times += 1
+                            else:
+                                cur_str_times = 1
+                                cur_strength_id += 1
+                                if cur_strength_id >= len(list_strength):
+                                    cur_strength_id = len(list_strength) - 1
+                                cur_strength = list_strength[cur_strength_id]
+                        else:
+                            cur_strength = 0
+                            cur_str_times = 1
                     
-                    print(f"loading strength = {cur_strength}")
+                    print(f"loading strength = {cur_strength}, loop times {cur_str_times}")
                     img_text_data = get_data(
                         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
                         epoch=0, strength=cur_strength)
@@ -150,24 +209,25 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             args, model.module.model)
         classification_head_new = classification_head_new.cuda()
 
-        # pdb.set_trace()
 
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)
+        # pdb.set_trace()
 
         # Saving model
         if args.save is not None:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
             logger.info('Saving model to' + str(model_path))
-            model.module.save(model_path)
+            # model.module.save(model_path)
+            torch.save(model.module.state_dict(), model_path)
             optim_path = os.path.join(args.save, f'optim_{epoch}.pt')
             torch.save(optimizer.state_dict(), optim_path)
 
         ood_acc = 0
         num_datasets = 0
         for k, v in epoch_stats.items():
-            if 'Accuracy' in k:
+            if 'Accuracy' in k and 'Class' not in k:
                 if k == 'ImageNet Accuracy':
                     #ignore the ID acc term
                     continue
@@ -178,10 +238,35 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         else:
             ood_acc = 0
 
+        # class acc:
+        class_stats = dict()
+        ind_dataset = {k: i for i, k in enumerate(args.eval_datasets)}
+        for k, v in epoch_stats.items():
+            if 'Accuracy' in k and 'Class' in k:
+                if k == 'ImageNet Accuracy':
+                    #ignore the ID acc term
+                    continue
+                list_k = k.split(' Class ')
+                dataset_n = list_k[0]
+                ds_id = ind_dataset[dataset_n]
+                cls_label = list_k[1].replace(' Accuracy', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][ds_id] = v
+
+        class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=args.eval_datasets)
+        log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
+            args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
+        os.makedirs(log_dir, exist_ok=True)
+        class_stats_df.to_csv(log_dir + f'/class_stats{epoch}.tsv', sep='\t')
+
         epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
         logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
         epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
+        epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
         log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
