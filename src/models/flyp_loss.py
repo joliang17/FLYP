@@ -8,6 +8,7 @@ import torch
 import pandas as pd
 import clip.clip as clip
 from clip.loss import ClipLoss
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from src.args import parse_arguments
 from src.datasets.common import get_dataloader, maybe_dictionarize
@@ -84,11 +85,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     devices = list(range(torch.cuda.device_count()))
     logger.info('Using devices' + str(devices))
 
-    # ############################
-    # # TODO: load finetuned model here
-    # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_16.pt')
-    # logger.info('Loading model ' + str(model_path))
-    # model.load_state_dict(torch.load(model_path))
+    ############################
+    # TODO: load finetuned model here
+    model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+    logger.info('Loading model ' + str(model_path))
+    model.load_state_dict(torch.load(model_path))
+    pdb.set_trace()
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head,
@@ -108,16 +110,18 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
 
-    scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                          args.epochs * num_batches, args.min_lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=1, eta_min=0.01, last_epoch=-1)
+
+    # scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+    #                       args.epochs * num_batches, args.min_lr)
 
     stats = []
     for epoch in trange(0, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
-            print('Restart scheduler')
-            scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                        (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
+            # print('Restart scheduler')
+            # scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+            #             (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
 
             if cur_strength != 0:
                 print('Restart dataloader')
@@ -238,25 +242,39 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         else:
             ood_acc = 0
 
+        ################################################
         # class acc:
         class_stats = dict()
         ind_dataset = {k: i for i, k in enumerate(args.eval_datasets)}
         for k, v in epoch_stats.items():
-            if 'Accuracy' in k and 'Class' in k:
-                if k == 'ImageNet Accuracy':
-                    #ignore the ID acc term
-                    continue
-                list_k = k.split(' Class ')
-                dataset_n = list_k[0]
-                ds_id = ind_dataset[dataset_n]
-                cls_label = list_k[1].replace(' Accuracy', '')
-                cur_label_name = f"Class {cls_label}"
-                if cur_label_name not in class_stats:
-                    cur_res = [0] * len(args.eval_datasets)
-                    class_stats[cur_label_name] = cur_res
-                class_stats[cur_label_name][ds_id] = v
+            if 'Class' in k:
+                    if k == 'ImageNet Accuracy':
+                        #ignore the ID acc term
+                        continue
+                    list_k = k.split(' Class ')
+                    dataset_n = list_k[0]
+                    ds_id = ind_dataset[dataset_n]
+                    if 'Accuracy' in k:
+                        cls_label = list_k[1].replace(' Accuracy', '')
+                        cur_label_name = f"Class {cls_label}"
+                        if cur_label_name not in class_stats:
+                            cur_res = [0] * 2 * len(args.eval_datasets)
+                            class_stats[cur_label_name] = cur_res
+                        class_stats[cur_label_name][2*ds_id] = v
+                    if 'Number' in k:
+                        cls_label = list_k[1].replace(' Number', '')
+                        cur_label_name = f"Class {cls_label}"
+                        if cur_label_name not in class_stats:
+                            cur_res = [0] * 2 * len(args.eval_datasets)
+                            class_stats[cur_label_name] = cur_res
+                        class_stats[cur_label_name][2*ds_id + 1] = v
 
-        class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=args.eval_datasets)
+        list_colum = [''] * 2 * len(args.eval_datasets)
+        for i in range(len(args.eval_datasets)):
+            list_colum[2*i] = args.eval_datasets[i]
+            list_colum[2*i+1] = args.eval_datasets[i] + ' Count'
+
+        class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=list_colum)
         log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
             args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
         os.makedirs(log_dir, exist_ok=True)
