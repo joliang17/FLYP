@@ -20,6 +20,7 @@ from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler, IterableD
 from torch.utils.data.distributed import DistributedSampler
 from webdataset.filters import _shuffle
 from webdataset.tariterators import base_plus_ext, url_opener, tar_file_expander, valid_sample
+import pdb
 
 try:
     import horovod.torch as hvd
@@ -46,7 +47,7 @@ class CsvDataset(Dataset):
             df = df[df['strength']==strength]
 
         if list_selection is not None:
-            df = df[df['y'].isin(list_selection)]
+            df = df[df['label'].isin(list_selection)]
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()

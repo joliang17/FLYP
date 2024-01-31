@@ -5,15 +5,37 @@ import argparse
 import pdb
 import pickle
 from sklearn.model_selection import train_test_split
+from typing import List, Dict
+
+def filter_img(clip_path: str, threshold: float):
+    dict_filt = dict()
+    if os.path.exists(clip_path):
+        with open(clip_path, 'rb') as f:
+            dict_clip_res = pickle.load(f)
+        list_filtered = list(dict_clip_res.items())
+        list_filtered = [[item[0].split('='), item[1][0][0]] for item in list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
+        list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
+        for pair in list_filtered:
+            cur_sp = pair[0]
+            cur_cate = pair[1]
+            cur_imgid = pair[2]
+            if cur_cate not in dict_filt:
+                dict_filt[cur_cate] = dict()
+            if cur_sp not in dict_filt[cur_cate]:
+                dict_filt[cur_cate][cur_sp] = []
+            dict_filt[cur_cate][cur_sp].append(cur_imgid)
+    return dict_filt
 
 
 def main(args):
     iwildcam_template = [
         lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."
     ]
-    if args.mode == 'train':
+    if args.mode in ('train', 'curriculum'):
+        # for training and curriculum progress evaluation
         label_to_name = pd.read_csv(args.label_file_ori)
     else:
+        # test data
         label_to_name = pd.read_csv(args.label_file_ori.replace('labels.csv', 'labels_new.csv'))
 
     label_to_name = label_to_name[label_to_name['y'] < 99999]
@@ -31,25 +53,9 @@ def main(args):
     list_y = []
     if args.mode == 'train':
         if args.curriculum:
-        # if True:
             clip_path = '../data/metadata/clip_score_train.pkl'
             threshold = 0.25
-            dict_filt = dict()
-            if os.path.exists(clip_path):
-                with open(clip_path, 'rb') as f:
-                    dict_clip_res = pickle.load(f)
-                list_filtered = list(dict_clip_res.items())
-                list_filtered = [[item[0].split('='), item[1][0][0]] for item in list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
-                list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
-                for pair in list_filtered:
-                    cur_sp = pair[0]
-                    cur_cate = pair[1]
-                    cur_imgid = pair[2]
-                    if cur_cate not in dict_filt:
-                        dict_filt[cur_cate] = dict()
-                    if cur_sp not in dict_filt[cur_cate]:
-                        dict_filt[cur_cate][cur_sp] = []
-                    dict_filt[cur_cate][cur_sp].append(cur_imgid)
+            Dict_filt = filter_img(clip_path, threshold)
 
             for cur_sp_f in img_sp_folder:
                 cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
@@ -57,6 +63,7 @@ def main(args):
                 cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
                 if cur_y not in list_y:
                     list_y.append(cur_y)
+
                 list_img_cate = os.listdir(cur_sp_path)
                 for cate in list_img_cate:
                     cur_strength = int(cate.split('_')[0].replace('Strength', ''))
@@ -66,11 +73,10 @@ def main(args):
 
                     for img_name in list_sub_img:
                         cur_img_path = os.path.join(cur_cate_path, img_name)
-                        if len(dict_filt) > 0:
-                            if cate in dict_filt:
-                                if cur_sp_f in dict_filt[cate]:
-                                    if img_name.replace('.jpg', '') in dict_filt[cate][cur_sp_f]:
-                                        list_result.append([cur_y, cur_img_path, cur_strength])
+                        img_name = img_name.replace('.jpg', '')
+                        if len(Dict_filt) > 0:
+                            if cate in Dict_filt and cur_sp_f in Dict_filt[cate] and img_name.replace('.jpg', '') in Dict_filt[cate][cur_sp_f]:
+                                list_result.append([cur_y, cur_img_path, cur_strength])
 
                         else:
                             list_result.append([cur_y, cur_img_path, cur_strength])
@@ -78,11 +84,12 @@ def main(args):
         if not args.total_train:
             #############################################
             # if using part of the original training data
-            img_sp_folder_ori = os.listdir("../data/train")
+            data_path = "../data/train"
+            img_sp_folder_ori = os.listdir(data_path)
             img_sp_folder_ori = [item for item in img_sp_folder_ori if item in img_sp_folder]
             cur_strength = 0
             for cur_sp_f in img_sp_folder_ori:
-                cur_sp_path = os.path.join("../data/train", cur_sp_f)
+                cur_sp_path = os.path.join(data_path, cur_sp_f)
                 cur_sp_name = cur_sp_f.replace('_', ' ')
                 cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
                 if cur_y not in list_y:
@@ -104,6 +111,41 @@ def main(args):
             df_train_ori = df_train_ori[['y', 'filename', 'strength']]
             cur_train_ori = df_train_ori.values.tolist()
             list_result.extend(cur_train_ori)
+
+    elif args.mode == 'curriculum':
+        # for curriculum progress evaluation
+
+        clip_path = '../data/metadata/clip_score_curri.pkl'
+        threshold = 0.25
+        Dict_filt = filter_img(clip_path, threshold)
+
+        data_path = "../data/test_new"
+        img_sp_folder_curri = os.listdir(data_path)
+        img_sp_folder_curri = [item for item in img_sp_folder_curri if item.replace('_', ' ') in sp_name]
+
+        for cur_sp_f in img_sp_folder_curri:
+            cur_sp_path = os.path.join(data_path, cur_sp_f)
+            cur_sp_name = cur_sp_f.replace('_', ' ')
+            cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+            if cur_y not in list_y:
+                list_y.append(cur_y)
+
+            list_imgs = os.listdir(cur_sp_path)
+            list_imgs = [item for item in list_imgs if '.' not in item]
+            for img_id in list_imgs:
+                cur_img_path = os.path.join(cur_sp_path, img_id) + '/ts.pkl'
+                with open(cur_img_path, 'rb') as f:
+                    list_cate = pickle.load(f)
+                for pair in list_cate:
+                    cate = pair[0]
+                    cur_strength = int(cate.split('_')[0].replace('Strength', ''))
+
+                    if len(Dict_filt) > 0:
+                        if cate in Dict_filt and cur_sp_name in Dict_filt[cate] and img_id in Dict_filt[cate][cur_sp_f]:
+                            list_result.append([cur_y, cur_img_path, cur_strength])
+
+                    else:
+                        list_result.append([cur_y, cur_img_path, cur_strength])
 
     else:
         img_sp_folder_train = os.listdir("../data/train_new")
@@ -147,21 +189,24 @@ def main(args):
         df = df_list
         print(len(df))
 
-    if args.mode == 'train':
-        label_to_name = label_to_name[label_to_name['y'].isin(list_y)]
-        # pdb.set_trace()
-        new_path = args.label_file_ori.replace('labels.csv', 'labels_new.csv')
-        label_to_name.to_csv(new_path, index=False)
-    # assert len(df) == 129809, 'number of samples incorrect'
+    #####################################
+    # only train categories with enhanced data
+    # if args.mode == 'train':
+    #     list_y = sorted(list_y, reverse=False)
+    #     list_label_csv = label_to_name['y'].unique().tolist()
+    #     list_missing = list(set(list_label_csv) - set(list_y))
+    #     list_names = [label_to_name[label_to_name['y']==i]['name'].values[0] for i in list_missing]
+    #     pdb.set_trace()
+    #     label_to_name = label_to_name[label_to_name['y'].isin(list_y)]
+    #     # pdb.set_trace()
+    #     new_path = args.label_file_ori.replace('labels.csv', 'labels_new.csv')
+    #     label_to_name.to_csv(new_path, index=False)
 
+    # merge prompts
     df1 = pd.merge(df, label_to_name[['y', 'prompt1']],
                    on='y').rename({'prompt1': 'title'}, axis='columns')
     df2 = pd.merge(df, label_to_name[['y', 'prompt2']],
                    on='y').rename({'prompt2': 'title'}, axis='columns')
-
-    # assert len(df1) == 129809, 'number of samples incorrect'
-    # assert len(df2) == 129809, 'number of samples incorrect'
-
     df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength']]
 
     del df1
@@ -171,19 +216,12 @@ def main(args):
     df_final = df_final.rename({'filename': 'filepath','y': 'label'},
                                axis='columns')[['title', 'filepath', 'label', 'strength']]
 
-    # assert len(df_final) == 129809 * 2, 'number of samples incorrect'
-
-    if args.mode == "train":
-        df_final.to_csv(os.path.join(args.save_folder, 'train.csv'), sep='\t', index=False, header=True)
-    else:
-        df_final.to_csv(os.path.join(args.save_folder, 'test.csv'), sep='\t', index=False, header=True)
-
+    df_final.to_csv(os.path.join(args.save_folder, f'{args.mode}.csv'), sep='\t', index=False, header=True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
-    parser.add_argument('--mode',
-                        default='train')    
+    parser.add_argument('--mode', default='train')    
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)

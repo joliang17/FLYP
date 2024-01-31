@@ -39,11 +39,24 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     #                         location=args.data_location,
     #                         batch_size=args.batch_size)
 
+    list_classes = None
+    if args.cont_finetune:
+        df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv', delimiter='\t')
+        df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
+        list_classes = df_filter['Unnamed: 0'].values.tolist()
+        list_classes = [int(item.replace('Class ', '')) for item in list_classes]
+        if 0 not in list_classes:
+            list_classes.append(0)
+        print(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
+        
     cur_strength = None
     len_data = None
     cur_str_times = 1
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        if args.cont_finetune:
+            df_ori = df_ori[df_ori['label'].isin(list_classes)]
+
         len_data = len(df_ori)
         list_strength = list(set(df_ori['strength'].values.tolist()))
         list_strength = sorted(list_strength, reverse=True)
@@ -61,23 +74,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             cur_strength_id = 0
             cur_strength = list_strength[cur_strength_id]
-
-        print(f"loading strength = {cur_strength}")
+        print(f"loading Image guidance = {100-cur_strength}")
         
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0, strength=cur_strength)
-    assert len(
-        img_text_data), 'At least one train or eval dataset must be specified.'
+        epoch=0, strength=cur_strength, list_selection=list_classes)
+    assert len(img_text_data), 'At least one train or eval dataset must be specified.'
     ft_dataloader = img_text_data['train_ft'].dataloader
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
+
     if args.curriculum:
         if args.curriculum_epoch is None:
             num_batches = int(len_data/args.batch_size) if len_data is not None else num_batches * len(list_strength)
         else:
             num_batches = num_batch_ori
-
     print(f"Num batches is {num_batches}")
 
     model = model.cuda()
@@ -87,10 +98,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     ############################
     # TODO: load finetuned model here
-    model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-    logger.info('Loading model ' + str(model_path))
-    model.load_state_dict(torch.load(model_path))
-    pdb.set_trace()
+    if args.cont_finetune:
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        logger.info('Loading model ' + str(model_path))
+        model.load_state_dict(torch.load(model_path))
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head,
@@ -110,28 +121,33 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=1, eta_min=0.01, last_epoch=-1)
 
-    # scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-    #                       args.epochs * num_batches, args.min_lr)
+    if args.scheduler == 'default':
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                            args.epochs * num_batches, args.min_lr)
+    elif args.scheduler == 'restart':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=1, eta_min=0.01, last_epoch=-1)
+    else:
+        raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
     stats = []
     for epoch in trange(0, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
-            # print('Restart scheduler')
-            # scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-            #             (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
+            if args.scheduler == 'default':
+                print('Restart scheduler')
+                scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                            (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
 
             if cur_strength != 0:
                 print('Restart dataloader')
                 cur_strength = 0
                 cur_str_times = 1
+                print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
                 
-                print(f"loading strength = {cur_strength}, loop times {cur_str_times}")
                 img_text_data = get_data(
                     args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-                    epoch=0, strength=cur_strength)
+                    epoch=0, strength=cur_strength, list_selection=list_classes)
                 ft_dataloader = img_text_data['train_ft'].dataloader
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
@@ -148,10 +164,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             start_time = time.time()
             step = i + epoch * num_batches
             if epoch != -1:
-                scheduler(step)
+                if args.scheduler == 'restart':
+                    scheduler.step(epoch)
+                else:
+                    scheduler(step)
             optimizer.zero_grad()
-
-            # pdb.set_trace()
 
             try:
                 ft_batch = next(ft_iterator)
@@ -162,8 +179,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         if cur_strength_id >= len(list_strength):
                             cur_strength_id = 0
                         cur_strength = list_strength[cur_strength_id]
-                    else:
-                        if epoch <= args.curriculum_epoch:
+                    elif epoch <= args.curriculum_epoch:
                             if cur_str_times < loop_times:
                                 cur_str_times += 1
                             else:
@@ -172,14 +188,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 if cur_strength_id >= len(list_strength):
                                     cur_strength_id = len(list_strength) - 1
                                 cur_strength = list_strength[cur_strength_id]
-                        else:
-                            cur_strength = 0
-                            cur_str_times = 1
+                    else:
+                        cur_strength = 0
+                        cur_str_times = 1
                     
-                    print(f"loading strength = {cur_strength}, loop times {cur_str_times}")
+                    print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
                     img_text_data = get_data(
                         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-                        epoch=0, strength=cur_strength)
+                        epoch=0, strength=cur_strength, list_selection=list_classes)
                     ft_dataloader = img_text_data['train_ft'].dataloader
 
                 ft_iterator = iter(ft_dataloader)
@@ -212,7 +228,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         classification_head_new = get_zeroshot_classifier(
             args, model.module.model)
         classification_head_new = classification_head_new.cuda()
-
 
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)

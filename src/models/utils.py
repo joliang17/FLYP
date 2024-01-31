@@ -34,6 +34,38 @@ def cosine_lr(optimizer, base_lrs, warmup_length, steps, min_lr=0.0):
     return _lr_adjuster
 
 
+def cosine_lr_restart(optimizer, base_lrs, warmup_length, steps, T_epoch=1, T_mult=1, min_lr=0.0):
+    if not isinstance(base_lrs, list):
+        base_lrs = [base_lrs for _ in optimizer.param_groups]
+    assert len(base_lrs) == len(optimizer.param_groups)
+
+    last_epoch = -1
+    T_cur = last_epoch
+
+    def _lr_adjuster(step, epoch=None):
+        for param_group, base_lr in zip(optimizer.param_groups, base_lrs):
+            if epoch is None and last_epoch < 0:
+                epoch = 0
+            if epoch is None:
+                epoch = last_epoch + 1
+                T_cur = T_cur + 1
+                if T_cur >= T_epoch:
+                    T_cur = T_cur - T_epoch
+                    T_epoch = T_epoch * T_mult
+
+                    
+            if step < warmup_length:
+                lr = _warmup_lr(base_lr, warmup_length, step)
+            else:
+                e = step - warmup_length
+                es = steps - warmup_length
+                lr = 0.5 * (1 + np.cos(np.pi * e / es)) * (base_lr - min_lr) + min_lr
+            assign_learning_rate(param_group, lr)
+
+    return _lr_adjuster
+
+
+
 def accuracy(output, target, topk=(1, )):
     pred = output.topk(max(topk), 1, True, True)[1].t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
