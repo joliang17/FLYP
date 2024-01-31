@@ -6,6 +6,7 @@ import pdb
 import pickle
 from sklearn.model_selection import train_test_split
 from typing import List, Dict
+from tqdm import tqdm
 
 def filter_img(clip_path: str, threshold: float):
     dict_filt = dict()
@@ -115,15 +116,15 @@ def main(args):
     elif args.mode == 'curriculum':
         # for curriculum progress evaluation
 
-        clip_path = '../data/metadata/clip_score_curri.pkl'
-        threshold = 0.25
+        clip_path = '../data/metadata/clip_score_curriculum.pkl'
+        threshold = 0.23
         Dict_filt = filter_img(clip_path, threshold)
 
         data_path = "../data/test_new"
         img_sp_folder_curri = os.listdir(data_path)
         img_sp_folder_curri = [item for item in img_sp_folder_curri if item.replace('_', ' ') in sp_name]
 
-        for cur_sp_f in img_sp_folder_curri:
+        for cur_sp_f in tqdm(img_sp_folder_curri):
             cur_sp_path = os.path.join(data_path, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
             cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
@@ -134,6 +135,8 @@ def main(args):
             list_imgs = [item for item in list_imgs if '.' not in item]
             for img_id in list_imgs:
                 cur_img_path = os.path.join(cur_sp_path, img_id) + '/ts.pkl'
+                if not os.path.exists(cur_img_path):
+                    continue
                 with open(cur_img_path, 'rb') as f:
                     list_cate = pickle.load(f)
                 for pair in list_cate:

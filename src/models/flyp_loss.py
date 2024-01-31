@@ -20,6 +20,7 @@ from src.datasets.laion import get_data
 import src.datasets as datasets
 import pdb
 import math
+import wandb
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
@@ -106,6 +107,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head,
                                                 device_ids=devices)
+
+    # init wandb if not debug mode
+    if not args.debug:
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.watch(model, log="gradients", log_freq=100)
+        wandb.log({"Image Guidance": 100-cur_strength if cur_strength is not None else -1, })
+
     classification_head.train()
     model.train()
 
@@ -120,7 +128,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     total_params = clip_params
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
-
 
     if args.scheduler == 'default':
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
@@ -144,6 +151,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 cur_strength = 0
                 cur_str_times = 1
                 print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+                if not args.debug:
+                    wandb.log({"Image Guidance": 100-cur_strength})
                 
                 img_text_data = get_data(
                     args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
@@ -193,6 +202,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_str_times = 1
                     
                     print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+                    if not args.debug:
+                        wandb.log({"Image Guidance": 100-cur_strength})
+
                     img_text_data = get_data(
                         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
                         epoch=0, strength=cur_strength, list_selection=list_classes)
@@ -214,6 +226,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             optimizer.step()
 
             id_flyp_loss_sum += ft_clip_loss.item()
+
+            if not args.debug:
+                wandb.log({"Train Epoch": epoch}, "ID FLYP Loss": ft_clip_loss.item())
 
             if i % print_every == 0:
                 percent_complete = 100 * i / num_batches
@@ -300,6 +315,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
         epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
         epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
+
+        if not args.debug:
+            wandb.log(epoch_stats)
+                        
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
         log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
@@ -309,3 +328,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.save is not None:
         return model_path
+
+    os.system('wandb sync')
+    
