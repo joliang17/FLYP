@@ -47,16 +47,19 @@ class ImageFolderWithPaths(datasets.ImageFolder):
         }
 
 
-def maybe_dictionarize(batch):
+def maybe_dictionarize(batch, progress_eval=False):
     if isinstance(batch, dict):
         return batch
-
+        
     if len(batch) == 2:
         batch = {'images': batch[0], 'labels': batch[1]}
     elif len(batch) == 3:
         batch = {'images': batch[0], 'labels': batch[1], 'metadata': batch[2]}
     elif len(batch) == 4:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
+    elif progress_eval:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'strength': batch[-1]}
+
     else:
         raise ValueError(f'Unexpected number of elements: {len(batch)}')
 

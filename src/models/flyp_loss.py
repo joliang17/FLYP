@@ -33,6 +33,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     clip_encoder.process_images = True
     print_every = 100
 
+    log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
+        args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
+    os.makedirs(log_dir, exist_ok=True)
+
     dataset_class = getattr(datasets, args.train_dataset)
     print(f"Training dataset {args.train_dataset}")
 
@@ -138,13 +142,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
     stats = []
+    last_strength = {}
     for epoch in trange(0, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
-            if args.scheduler == 'default':
-                print('Restart scheduler')
-                scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                            (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
+            # if args.scheduler == 'default':
+            #     print('Restart scheduler')
+            #     scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+            #                 (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
 
             if cur_strength != 0:
                 print('Restart dataloader')
@@ -164,6 +169,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         print("Epoch : ", epoch)
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
+        Dict_cur_strength = {}
+
         id_flyp_loss_sum = 0
         model.train()
         model = model.cuda()
@@ -228,7 +235,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             id_flyp_loss_sum += ft_clip_loss.item()
 
             if not args.debug:
-                wandb.log({"Train Epoch": epoch}, "ID FLYP Loss": ft_clip_loss.item())
+                wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
 
             if i % print_every == 0:
                 percent_complete = 100 * i / num_batches
@@ -244,9 +251,24 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             args, model.module.model)
         classification_head_new = classification_head_new.cuda()
 
+        # TODO: Evaluate progress on different group of strength for this epoch
+        if args.progress_eval:
+            last_results = evaluate(model, args, classification_head_new,
+                                Dict_cur_strength, logger, progress_eval=True)
+            Dict_cur_strength = {key: value for key, value in Dict_cur_strength.items() if 'Acc' in key}
+            str_progress = dict()
+            str_progress['epoch'] = epoch
+            for key, value in Dict_cur_strength.items():
+                if key not in last_strength:
+                    last_strength[key] = 0
+                str_progress[key.replace('Accuracy', 'Progress')] = value - last_strength[key]
+            last_strength = Dict_cur_strength
+
+            df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
+            df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
+
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)
-        # pdb.set_trace()
 
         # Saving model
         if args.save is not None:
@@ -305,9 +327,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             list_colum[2*i+1] = args.eval_datasets[i] + ' Count'
 
         class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=list_colum)
-        log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
-            args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
-        os.makedirs(log_dir, exist_ok=True)
         class_stats_df.to_csv(log_dir + f'/class_stats{epoch}.tsv', sep='\t')
 
         epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
@@ -321,9 +340,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
-        log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
-            args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
-        os.makedirs(log_dir, exist_ok=True)
         stats_df.to_csv(log_dir + '/stats.tsv', sep='\t')
 
     if args.save is not None:

@@ -57,6 +57,7 @@ def parse_arguments():
         type=str,
         default=None,
         help="Name of the experiment, for organization purposes only.")
+
     parser.add_argument(
         "--results-db",
         type=str,
@@ -160,6 +161,10 @@ def parse_arguments():
 
     parser.add_argument('--cont_finetune', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--scheduler', type=str, default='default',)
 
     parser.add_argument(
@@ -248,6 +253,13 @@ def parse_arguments():
         type=float,
         default=0.0,
         help="minimum LR for cosine scheduler",
+    )
+
+    parser.add_argument(
+        "--wandb_group_name",
+        type=str,
+        default='default',
+        help="wandb group for expr results",
     )
 
     parsed_args = parser.parse_args()

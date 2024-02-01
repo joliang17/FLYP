@@ -171,3 +171,5 @@ apicache-py3/*
 
 *.tsv
 *.pt
+
+wandb/*

@@ -12,7 +12,17 @@ import torch.nn.functional as F
 import pdb
 
 
-def eval_single_dataset(image_classifier, dataset, args, classification_head):
+def process_train_stat(results, train_stats, logger, dataset_name=''):
+    for key, val in results.items():
+        if 'worst' in key or 'f1' in key.lower() or 'pm0' in key:
+            print(f"{dataset_name} {key}: {val:.4f}")
+            if logger != None:
+                logger.info(f"{dataset_name} {key}: {val:.4f}")
+            train_stats[dataset_name + key] = round(val, 4)
+    return 
+
+
+def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False):
 
     model = image_classifier
     input_key = 'images'
@@ -21,7 +31,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
     model.eval()
     classification_head.eval()
 
-    if not args.self_data:
+    if progress_eval:
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_strength=True).dataloader
+
+    elif not args.self_data:
         ## equals to dataloader = dataset.test_loader
         dataloader = get_dataloader(dataset,
                                     is_train=False,
@@ -41,11 +54,14 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
         dict_class = dict()
+        dict_strength = dict()
         for i, data in batched_data:
 
-            data = maybe_dictionarize(data)
+            data = maybe_dictionarize(data, progress_eval=progress_eval)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
+            if progress_eval and 'strength' in data:
+                strength = data['strength']
 
             if 'image_paths' in data:
                 image_paths = data['image_paths']
@@ -80,6 +96,20 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
                     
                     dict_class[cls_i][0] += cur_correct
                     dict_class[cls_i][1] += cur_num
+                
+                if progress_eval:
+                    strengthes = torch.unique(strength)
+                    for str_i in strengthes:
+                        str_i = str_i.item()
+                        sap_ids = (strength == str_i).nonzero(as_tuple=True)
+                        cur_pred = pred[sap_ids]
+                        cur_correct = (cur_pred == str_i).sum().item()
+                        cur_num = len(sap_ids[0])
+                        if str_i not in dict_strength:
+                            dict_strength[str_i] = [0, 0]
+                        
+                        dict_strength[str_i][0] += cur_correct
+                        dict_strength[str_i][1] += cur_num
 
             if args.self_data or hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -112,6 +142,9 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head):
     
     if len(dict_class) > 0:
         metrics['class_top1'] = dict_class
+
+    if len(dict_strength) > 0:
+        metrics['strength_top1'] = dict_strength
 
     return metrics
 
@@ -189,10 +222,33 @@ def evaluate(image_classifier,
              args,
              classification_head,
              train_stats={},
-             logger=None):
+             logger=None, 
+             progress_eval=False):
     if args.eval_datasets is None:
         return
     info = vars(args)
+    if progress_eval:
+        # load specific curriculum data and evaluate performance on group of strength
+        print('Evaluating on curriculum evaluation dataset')
+        dataset = None
+        results = eval_single_dataset(image_classifier, dataset, args,
+                                        classification_head, progress_eval=True)
+
+        if 'strength_top1' in results:
+            list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['strength_top1'].items()]
+            list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
+            for pair in list_acc:
+                print(f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                if logger != None:
+                    logger.info(
+                        f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                train_stats[f"Strength {pair[0]} Accuracy"] = round(pair[1], 4)
+                train_stats[f"Strength {pair[0]} Number"] = pair[2]
+
+        process_train_stat(results, train_stats, logger)
+
+        return info
+
     for i, dataset_name in enumerate(args.eval_datasets):
         print('Evaluating on', dataset_name)
         dataset_class = getattr(datasets, dataset_name)
@@ -224,11 +280,6 @@ def evaluate(image_classifier,
                 train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
                 train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
-        for key, val in results.items():
-            if 'worst' in key or 'f1' in key.lower() or 'pm0' in key:
-                print(f"{dataset_name} {key}: {val:.4f}")
-                if logger != None:
-                    logger.info(f"{dataset_name} {key}: {val:.4f}")
-                train_stats[dataset_name + key] = round(val, 4)
+        process_train_stat(results, train_stats, logger, dataset_name)
 
     return info

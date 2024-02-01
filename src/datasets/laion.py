@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision.datasets as datasets
+import torchvision.transforms as T
 import webdataset as wds
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler, IterableDataset, get_worker_info
@@ -21,6 +22,8 @@ from torch.utils.data.distributed import DistributedSampler
 from webdataset.filters import _shuffle
 from webdataset.tariterators import base_plus_ext, url_opener, tar_file_expander, valid_sample
 import pdb
+import pickle
+
 
 try:
     import horovod.torch as hvd
@@ -39,7 +42,8 @@ class CsvDataset(Dataset):
                  sep="\t",
                  label_key=None,
                  strength=None,
-                 list_selection=None):
+                 list_selection=None,
+                 return_strength=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
@@ -51,8 +55,12 @@ class CsvDataset(Dataset):
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
-
         num_columns = len(df.columns) - 3
+
+        self.return_strength = return_strength
+        if self.return_strength:
+            self.strength = df['strength'].tolist()
+            self.img_trans = T.ToPILImage()
 
         self.captions_list = []
         for k in range(1, num_columns):
@@ -70,7 +78,17 @@ class CsvDataset(Dataset):
         return len(self.captions)
 
     def __getitem__(self, idx):
-        images = self.transforms(Image.open(str(self.images[idx])))
+        img_path = str(self.images[idx])
+        if img_path.endswith('.pkl'):
+            with open(img_path, 'rb') as f:
+                images = pickle.load(f)
+            if torch.is_tensor(images):
+                images = self.img_trans(images)
+        else:
+            images = Image.open(img_path)
+            
+        images = self.transforms(images)
+
         texts = tokenize([str(self.captions[idx])])[0]
 
         if len(self.captions_list) > 0:
@@ -84,18 +102,30 @@ class CsvDataset(Dataset):
 
             texts_list = texts_list[perm, :]
 
+        if self.return_strength:
+            strength = self.strength[idx]
+            
         if self.return_label:
             label = self.labels[idx]
             f_path = self.img_path[idx]
             if len(self.captions_list) > 0:
                 return images, texts, texts_list, label, f_path
             else:
-                return images, texts, label, f_path
+                if self.return_strength:
+                    return images, texts, label, f_path, strength
+                else:
+                    return images, texts, label, f_path, 
 
         if len(self.captions_list) > 0:
-            return images, texts, texts_list
+            if self.return_strength:
+                return images, texts, texts_list, strength
+            else:
+                return images, texts, texts_list
 
-        return images, texts
+        if self.return_strength:
+            return images, texts, strength
+        else:
+            return images, texts
 
 
 class SharedEpoch:
@@ -465,7 +495,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None):
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None, return_strength=False):
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
@@ -485,7 +515,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_
                          sep=args.csv_separator,
                          label_key=label_key, 
                          strength=strength, 
-                         list_selection=list_selection)
+                         list_selection=list_selection,
+                         return_strength=return_strength)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None

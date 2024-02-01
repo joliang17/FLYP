@@ -127,12 +127,15 @@ def main(args):
         for cur_sp_f in tqdm(img_sp_folder_curri):
             cur_sp_path = os.path.join(data_path, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
+            new_saved_path = os.path.join(cur_sp_path, 'new_saved')
+            os.makedirs(new_saved_path, exist_ok=True)
+
             cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
             if cur_y not in list_y:
                 list_y.append(cur_y)
 
             list_imgs = os.listdir(cur_sp_path)
-            list_imgs = [item for item in list_imgs if '.' not in item]
+            list_imgs = [item for item in list_imgs if '.' not in item and item != 'new_saved']
             for img_id in list_imgs:
                 cur_img_path = os.path.join(cur_sp_path, img_id) + '/ts.pkl'
                 if not os.path.exists(cur_img_path):
@@ -142,13 +145,18 @@ def main(args):
                 for pair in list_cate:
                     cate = pair[0]
                     cur_strength = int(cate.split('_')[0].replace('Strength', ''))
+                    new_path = new_saved_path + f'/{img_id}_{cate}.pkl'
 
                     if len(Dict_filt) > 0:
                         if cate in Dict_filt and cur_sp_name in Dict_filt[cate] and img_id in Dict_filt[cate][cur_sp_f]:
-                            list_result.append([cur_y, cur_img_path, cur_strength])
+                            with open(new_path, 'wb') as f:
+                                pickle.dump(pair[1], f)
+                            list_result.append([cur_y, new_path, cur_strength])
 
                     else:
-                        list_result.append([cur_y, cur_img_path, cur_strength])
+                        with open(new_path, 'wb') as f:
+                            pickle.dump(pair[1], f)
+                        list_result.append([cur_y, new_path, cur_strength])
 
     else:
         img_sp_folder_train = os.listdir("../data/train_new")
