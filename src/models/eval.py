@@ -103,7 +103,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                         str_i = str_i.item()
                         sap_ids = (strength == str_i).nonzero(as_tuple=True)
                         cur_pred = pred[sap_ids]
-                        cur_correct = (cur_pred == str_i).sum().item()
+                        cur_y = y[sap_ids]
+                        cur_correct = cur_pred.eq(cur_y.view_as(cur_pred)).sum().item()
                         cur_num = len(sap_ids[0])
                         if str_i not in dict_strength:
                             dict_strength[str_i] = [0, 0]
@@ -137,6 +138,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                 metrics['top1'] = metrics['acc']
         else:
             metrics = {}
+
     if 'top1' not in metrics:
         metrics['top1'] = top1
     

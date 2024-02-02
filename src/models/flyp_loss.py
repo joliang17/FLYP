@@ -37,13 +37,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
     os.makedirs(log_dir, exist_ok=True)
 
-    dataset_class = getattr(datasets, args.train_dataset)
-    print(f"Training dataset {args.train_dataset}")
+    model = model.cuda()
+    classification_head = classification_head.cuda()
+    devices = list(range(torch.cuda.device_count()))
+    logger.info('Using devices' + str(devices))
 
-    # dataset = dataset_class(preprocess_fn,
-    #                         location=args.data_location,
-    #                         batch_size=args.batch_size)
+    ############################
+    # load finetuned model here
+    if args.cont_finetune:
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        # model_path = os.path.join("checkpoints/flyp_loss_curri_progress/_BS256_WD0.2_LR1e-05_run1/", f'checkpoint_14.pt')
+        logger.info('Loading model ' + str(model_path))
+        model.load_state_dict(torch.load(model_path))
 
+
+    ############################
+    # Data initialization
     list_classes = None
     if args.cont_finetune:
         df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv', delimiter='\t')
@@ -53,10 +62,42 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if 0 not in list_classes:
             list_classes.append(0)
         print(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
-        
+    
     cur_strength = None
     len_data = None
     cur_str_times = 1
+    start_epoch = 0
+
+    dataset_class = getattr(datasets, args.train_dataset)
+    print(f"Training dataset {args.train_dataset}")
+
+    # dataset = dataset_class(preprocess_fn,
+    #                         location=args.data_location,
+    #                         batch_size=args.batch_size)
+
+    # ############################
+    # # Based on breakpoint to keep training
+    # if os.path.exists(args.save):
+    #     list_files = os.listdir(args.save)
+    #     if len(list_files) > 0:
+    #         list_ckpt = [int(item.replace('checkpoint_', '')) for item in list_files if 'checkpoint_' in item]
+    #         list_ckpt = sorted(list_ckpt, reverse=True)
+    #         ckpt_file = f"checkpoint_{list_ckpt[0]}"
+    #         logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
+
+    #         checkpoint = torch.load(os.path.join(args.save, ckpt_file))  
+    #         start_epoch = checkpoint['epoch']
+    #         cur_strength = checkpoint['cur_strength']
+    #         cur_str_times = checkpoint['cur_str_times']
+    #         cur_strength_id = checkpoint['cur_strength_id']
+          
+    #         model.load_state_dict(checkpoint['model_state_dict'])
+    #         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    model = torch.nn.DataParallel(model, device_ids=devices)
+    classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
+
+
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
         if args.cont_finetune:
@@ -66,8 +107,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         list_strength = list(set(df_ori['strength'].values.tolist()))
         list_strength = sorted(list_strength, reverse=True)
         if args.curriculum_epoch is None:
-            cur_strength_id = 0
-            cur_strength = list_strength[cur_strength_id]
+            if cur_strength is None:
+                cur_strength_id = 0
+                cur_strength = list_strength[cur_strength_id]
         else:
             # using curriculum_epoch to decide the current strength
             # finish viewing all strength data during curriculum_epoch
@@ -77,14 +119,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
             loop_times = math.ceil(total_viewing / len_all_stre)
 
-            cur_strength_id = 0
-            cur_strength = list_strength[cur_strength_id]
+            if cur_strength is None:
+                cur_strength_id = 0
+                cur_strength = list_strength[cur_strength_id]
         print(f"loading Image guidance = {100-cur_strength}")
         
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
         epoch=0, strength=cur_strength, list_selection=list_classes)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
+
     ft_dataloader = img_text_data['train_ft'].dataloader
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
@@ -96,21 +140,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = num_batch_ori
     print(f"Num batches is {num_batches}")
 
-    model = model.cuda()
-    classification_head = classification_head.cuda()
-    devices = list(range(torch.cuda.device_count()))
-    logger.info('Using devices' + str(devices))
-
-    ############################
-    # TODO: load finetuned model here
-    if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-        logger.info('Loading model ' + str(model_path))
-        model.load_state_dict(torch.load(model_path))
-
-    model = torch.nn.DataParallel(model, device_ids=devices)
-    classification_head = torch.nn.DataParallel(classification_head,
-                                                device_ids=devices)
 
     # init wandb if not debug mode
     if not args.debug:
@@ -133,23 +162,23 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
 
-    if args.scheduler == 'default':
+    if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                            args.epochs * num_batches, args.min_lr)
-    elif args.scheduler == 'restart':
+                            (args.epochs - start_epoch) * num_batches, args.min_lr)
+    elif args.scheduler in ('crestart', ):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
     stats = []
     last_strength = {}
-    for epoch in trange(0, args.epochs):
+    for epoch in trange(start_epoch+1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
-            # if args.scheduler == 'default':
-            #     print('Restart scheduler')
-            #     scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-            #                 (args.epochs - args.curriculum_epoch) * num_batches, args.min_lr)
+            if args.scheduler == 'drestart':
+                print('Restart scheduler')
+                scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                            (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
 
             if cur_strength != 0:
                 print('Restart dataloader')
@@ -180,7 +209,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             start_time = time.time()
             step = i + epoch * num_batches
             if epoch != -1:
-                if args.scheduler == 'restart':
+                if args.scheduler == 'crestart':
                     scheduler.step(epoch)
                 else:
                     scheduler(step)
@@ -196,14 +225,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_strength_id = 0
                         cur_strength = list_strength[cur_strength_id]
                     elif epoch <= args.curriculum_epoch:
-                            if cur_str_times < loop_times:
-                                cur_str_times += 1
-                            else:
-                                cur_str_times = 1
-                                cur_strength_id += 1
-                                if cur_strength_id >= len(list_strength):
-                                    cur_strength_id = len(list_strength) - 1
-                                cur_strength = list_strength[cur_strength_id]
+                        if cur_str_times < loop_times:
+                            cur_str_times += 1
+                        else:
+                            cur_str_times = 1
+                            cur_strength_id += 1
+                            if cur_strength_id >= len(list_strength):
+                                cur_strength_id = len(list_strength) - 1
+                            cur_strength = list_strength[cur_strength_id]
                     else:
                         cur_strength = 0
                         cur_str_times = 1
@@ -236,7 +265,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             if not args.debug:
                 wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
+                
+                if args.scheduler in ('default', 'drestart'):
+                    lr = optimizer.param_groups[0]['lr']
+                elif args.scheduler in ('crestart', ):
+                    lr = scheduler.get_lr()[0]
+                else:
+                    lr = args.lr
 
+                wandb.log({"Learning Rate": lr, })
+                
             if i % print_every == 0:
                 percent_complete = 100 * i / num_batches
                 logger.info(
@@ -251,7 +289,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             args, model.module.model)
         classification_head_new = classification_head_new.cuda()
 
-        # TODO: Evaluate progress on different group of strength for this epoch
+        # Evaluate progress on different group of strength for this epoch
         if args.progress_eval:
             last_results = evaluate(model, args, classification_head_new,
                                 Dict_cur_strength, logger, progress_eval=True)
@@ -274,11 +312,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.save is not None:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
+            torch.save({
+                    'epoch': epoch,
+                    'cur_strength': cur_strength,
+                    'cur_str_times': cur_str_times,
+                    'cur_strength_id': cur_strength_id,
+                    'model_state_dict': model.module.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, model_path)
             logger.info('Saving model to' + str(model_path))
-            # model.module.save(model_path)
-            torch.save(model.module.state_dict(), model_path)
-            optim_path = os.path.join(args.save, f'optim_{epoch}.pt')
-            torch.save(optimizer.state_dict(), optim_path)
 
         ood_acc = 0
         num_datasets = 0
@@ -299,27 +341,29 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         class_stats = dict()
         ind_dataset = {k: i for i, k in enumerate(args.eval_datasets)}
         for k, v in epoch_stats.items():
-            if 'Class' in k:
-                    if k == 'ImageNet Accuracy':
-                        #ignore the ID acc term
-                        continue
-                    list_k = k.split(' Class ')
-                    dataset_n = list_k[0]
-                    ds_id = ind_dataset[dataset_n]
-                    if 'Accuracy' in k:
-                        cls_label = list_k[1].replace(' Accuracy', '')
-                        cur_label_name = f"Class {cls_label}"
-                        if cur_label_name not in class_stats:
-                            cur_res = [0] * 2 * len(args.eval_datasets)
-                            class_stats[cur_label_name] = cur_res
-                        class_stats[cur_label_name][2*ds_id] = v
-                    if 'Number' in k:
-                        cls_label = list_k[1].replace(' Number', '')
-                        cur_label_name = f"Class {cls_label}"
-                        if cur_label_name not in class_stats:
-                            cur_res = [0] * 2 * len(args.eval_datasets)
-                            class_stats[cur_label_name] = cur_res
-                        class_stats[cur_label_name][2*ds_id + 1] = v
+            if 'Class' not in k:
+                continue
+            if k == 'ImageNet Accuracy':
+                #ignore the ID acc term
+                continue
+
+            list_k = k.split(' Class ')
+            dataset_n = list_k[0]
+            ds_id = ind_dataset[dataset_n]
+            if 'Accuracy' in k:
+                cls_label = list_k[1].replace(' Accuracy', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][2*ds_id] = v
+            elif 'Number' in k:
+                cls_label = list_k[1].replace(' Number', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][2*ds_id + 1] = v
 
         list_colum = [''] * 2 * len(args.eval_datasets)
         for i in range(len(args.eval_datasets)):
