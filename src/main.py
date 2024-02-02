@@ -11,7 +11,8 @@ from src.models.ce_ablation import ce_ablation
 from src.models.modeling import ClassificationHead, CLIPEncoder, ImageClassifier
 from src.models.utils import fisher_load
 from src.args import parse_arguments
-import logging
+# import logging
+from logger_utils import get_logger
 import random
 
 def main(args):
@@ -24,12 +25,14 @@ def main(args):
     logging_path = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
         args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
     os.makedirs(logging_path, exist_ok=True)
+
     log_filename = logging_path + "/log.log"
-    logging.basicConfig(filename=log_filename,
-                        format='%(asctime)s %(message)s',
-                        filemode='w')
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    logger = get_logger(l_name='FLYP Logger', l_file=log_filename)
+    # logging.basicConfig(filename=log_filename,
+    #                     format='%(asctime)s %(message)s',
+    #                     filemode='w')
+    # logger = logging.getLogger()
+    # logger.setLevel(logging.INFO)
     assert args.save is not None, 'Please provide a path to store models'
     #############################################################################
 

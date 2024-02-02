@@ -61,7 +61,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         list_classes = [int(item.replace('Class ', '')) for item in list_classes]
         if 0 not in list_classes:
             list_classes.append(0)
-        print(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
+        logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
     
     cur_strength = None
     len_data = None
@@ -69,7 +69,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     start_epoch = 0
 
     dataset_class = getattr(datasets, args.train_dataset)
-    print(f"Training dataset {args.train_dataset}")
+    logger.info(f"Training dataset {args.train_dataset}")
 
     # dataset = dataset_class(preprocess_fn,
     #                         location=args.data_location,
@@ -122,7 +122,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             if cur_strength is None:
                 cur_strength_id = 0
                 cur_strength = list_strength[cur_strength_id]
-        print(f"loading Image guidance = {100-cur_strength}")
+        logger.info(f"loading Image guidance = {100-cur_strength}")
         
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
@@ -138,7 +138,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = int(len_data/args.batch_size) if len_data is not None else num_batches * len(list_strength)
         else:
             num_batches = num_batch_ori
-    print(f"Num batches is {num_batches}")
+    logger.info(f"Num batches is {num_batches}")
 
 
     # init wandb if not debug mode
@@ -176,15 +176,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
             if args.scheduler == 'drestart':
-                print('Restart scheduler')
+                logger.info('Restart scheduler')
                 scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
                             (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
 
             if cur_strength != 0:
-                print('Restart dataloader')
+                logger.info('Restart dataloader')
                 cur_strength = 0
                 cur_str_times = 1
-                print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+                logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
                 if not args.debug:
                     wandb.log({"Image Guidance": 100-cur_strength})
                 
@@ -195,7 +195,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
-        print("Epoch : ", epoch)
+        logger.info("Epoch : ", epoch)
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
         Dict_cur_strength = {}
@@ -237,7 +237,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_strength = 0
                         cur_str_times = 1
                     
-                    print(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+                    logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
                     if not args.debug:
                         wandb.log({"Image Guidance": 100-cur_strength})
 

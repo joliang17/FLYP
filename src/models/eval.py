@@ -12,12 +12,18 @@ import torch.nn.functional as F
 import pdb
 
 
+def logging_input(curinput='', logger=None):
+    if logger is not None:
+        logger.info(curinput)
+    else:
+        print(curinput)
+    return
+
+
 def process_train_stat(results, train_stats, logger, dataset_name=''):
     for key, val in results.items():
         if 'worst' in key or 'f1' in key.lower() or 'pm0' in key:
-            print(f"{dataset_name} {key}: {val:.4f}")
-            if logger != None:
-                logger.info(f"{dataset_name} {key}: {val:.4f}")
+            logging_input(f"{dataset_name} {key}: {val:.4f}", logger)
             train_stats[dataset_name + key] = round(val, 4)
     return 
 
@@ -231,7 +237,7 @@ def evaluate(image_classifier,
     info = vars(args)
     if progress_eval:
         # load specific curriculum data and evaluate performance on group of strength
-        print('Evaluating on curriculum evaluation dataset')
+        logging_input(f"Evaluating on curriculum evaluation dataset", logger)
         dataset = None
         results = eval_single_dataset(image_classifier, dataset, args,
                                         classification_head, progress_eval=True)
@@ -240,10 +246,7 @@ def evaluate(image_classifier,
             list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['strength_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:
-                print(f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
-                if logger != None:
-                    logger.info(
-                        f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                logging_input(f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
                 train_stats[f"Strength {pair[0]} Accuracy"] = round(pair[1], 4)
                 train_stats[f"Strength {pair[0]} Number"] = pair[2]
 
@@ -252,7 +255,8 @@ def evaluate(image_classifier,
         return info
 
     for i, dataset_name in enumerate(args.eval_datasets):
-        print('Evaluating on', dataset_name)
+        logging_input(f"Evaluating on {dataset_name}", logger)
+
         dataset_class = getattr(datasets, dataset_name)
         if not args.self_data:
             dataset = dataset_class(image_classifier.module.val_preprocess,
@@ -265,20 +269,14 @@ def evaluate(image_classifier,
                                       classification_head)
 
         if 'top1' in results:
-            print(f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}")
-            if logger != None:
-                logger.info(
-                    f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}")
+            logging_input(f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}", logger)
             train_stats[dataset_name + " Accuracy"] = round(results['top1'], 4)
         
         if 'class_top1' in results:
             list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['class_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:
-                print(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
-                if logger != None:
-                    logger.info(
-                        f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}")
+                logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
                 train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
                 train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
