@@ -10,6 +10,7 @@ import clip.clip as clip
 from clip.loss import ClipLoss
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
+from typing import List
 from src.args import parse_arguments
 from src.datasets.common import get_dataloader, maybe_dictionarize
 from src.models.eval import evaluate
@@ -21,9 +22,90 @@ import src.datasets as datasets
 import pdb
 import math
 import wandb
+import numpy as np
 
 
-def flyp_loss(args, clip_encoder, classification_head, logger):
+def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None, ctype='out_curri'):
+    # sequentially use strength 
+    if ctype == 'no_curri':
+        # iteratively loop over all guidance
+        cur_strength_id += 1
+        if cur_strength_id >= len(list_strength):
+            cur_strength_id = 0
+        cur_strength = list_strength[cur_strength_id]
+        return cur_strength_id, cur_strength
+
+    elif ctype == 'in_curri':
+        # have fixed curriculum length
+        if cur_str_times < loop_times:
+            # cur_strength_id unchanged 
+            cur_str_times += 1
+        else:
+            cur_str_times = 1
+            cur_strength_id += 1
+
+            if cur_strength_id >= len(list_strength):
+                cur_strength_id = len(list_strength) - 1
+            cur_strength = list_strength[cur_strength_id]
+
+        return cur_strength_id, cur_strength, cur_str_times
+
+    elif ctype == 'out_curri':
+        cur_strength = 0
+        cur_str_times = 1
+        return cur_strength_id, cur_strength, cur_str_times
+    else:
+        raise ValueError(f"invalid ctype {ctype}")
+
+
+def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, ):
+
+    if cur_strength is not None:
+        logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+        if not args.debug:
+            wandb.log({"Image Guidance": 100-cur_strength})
+
+    # load dataloader
+    img_text_data = get_data(
+        args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
+        epoch=0, strength=cur_strength, list_selection=list_classes)
+    assert len(img_text_data), 'At least one train or eval dataset must be specified.'
+
+    ft_dataloader = img_text_data['train_ft'].dataloader
+    return ft_dataloader
+
+
+def generate_class_head(model, args):
+    # get classification head embedding
+    args.current_epoch = epoch
+    classification_head_new = get_zeroshot_classifier(
+        args, model.module.model)
+    classification_head_new = classification_head_new.cuda()
+    return classification_head_new
+
+
+def progress_eval(model, args, last_strength):
+    classification_head_new = generate_class_head(model, args)
+    Dict_cur_strength = {}
+    last_results = evaluate(model, args, classification_head_new,
+                                    Dict_cur_strength, logger, progress_eval=True)
+    str_progress = dict()
+    res_progress = dict()
+    for key, value in Dict_cur_strength.items():
+        if 'Number' in key: 
+            continue
+        if key not in last_strength:
+            last_strength[key] = 0
+
+        guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
+        str_progress[f"Guidance {100-guidance_i}"] = np.round(value - last_strength[key], 6)
+        res_progress[guidance_i] = value - last_strength[key]
+
+    last_strength = copy.deepcopy(Dict_cur_strength)
+    return res_progress, str_progress, last_strength
+
+
+def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
     model = clip_encoder
@@ -45,11 +127,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-        # model_path = os.path.join("checkpoints/flyp_loss_curri_progress/_BS256_WD0.2_LR1e-05_run1/", f'checkpoint_14.pt')
+        # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        model_path = os.path.join("checkpoints/flyp_loss_base_progress/saved", f'checkpoint_11.pt')
         logger.info('Loading model ' + str(model_path))
-        model.load_state_dict(torch.load(model_path))
-
+        checkpoint = torch.load(model_path)
+        # model.load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -57,6 +140,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if args.cont_finetune:
         df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv', delimiter='\t')
         df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
+        # df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] <= 50)]
         list_classes = df_filter['Unnamed: 0'].values.tolist()
         list_classes = [int(item.replace('Class ', '')) for item in list_classes]
         if 0 not in list_classes:
@@ -64,6 +148,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
     
     cur_strength = None
+    cur_strength_id = 0
     len_data = None
     cur_str_times = 1
     start_epoch = 0
@@ -75,28 +160,28 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     #                         location=args.data_location,
     #                         batch_size=args.batch_size)
 
-    # ############################
-    # # Based on breakpoint to keep training
+    # # ############################
+    # # # Based on breakpoint to keep training
     # if os.path.exists(args.save):
     #     list_files = os.listdir(args.save)
     #     if len(list_files) > 0:
     #         list_ckpt = [int(item.replace('checkpoint_', '')) for item in list_files if 'checkpoint_' in item]
     #         list_ckpt = sorted(list_ckpt, reverse=True)
     #         ckpt_file = f"checkpoint_{list_ckpt[0]}"
+    #         loading_file = os.path.join(args.save, ckpt_file)
     #         logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
 
-    #         checkpoint = torch.load(os.path.join(args.save, ckpt_file))  
+    #         checkpoint = torch.load(loading_file)  
     #         start_epoch = checkpoint['epoch']
     #         cur_strength = checkpoint['cur_strength']
     #         cur_str_times = checkpoint['cur_str_times']
     #         cur_strength_id = checkpoint['cur_strength_id']
-          
     #         model.load_state_dict(checkpoint['model_state_dict'])
-    #         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    #         # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
-
 
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
@@ -119,17 +204,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
             loop_times = math.ceil(total_viewing / len_all_stre)
 
+            # start from strength = 0 / img guidance = 100
             if cur_strength is None:
                 cur_strength_id = 0
                 cur_strength = list_strength[cur_strength_id]
-        logger.info(f"loading Image guidance = {100-cur_strength}")
-        
-    img_text_data = get_data(
-        args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0, strength=cur_strength, list_selection=list_classes)
-    assert len(img_text_data), 'At least one train or eval dataset must be specified.'
+    
+    # run progress eval after single strength training
+    if args.strength != -1:
+        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        df_ori = df_ori[df_ori['strength'] == args.strength]
+        len_data = len(df_ori)
 
-    ft_dataloader = img_text_data['train_ft'].dataloader
+        list_strength = [args.strength, ]
+        cur_strength_id = 0
+        cur_strength = args.strength
+
+    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -140,12 +230,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = num_batch_ori
     logger.info(f"Num batches is {num_batches}")
 
-
     # init wandb if not debug mode
     if not args.debug:
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
-        wandb.log({"Image Guidance": 100-cur_strength if cur_strength is not None else -1, })
 
     classification_head.train()
     model.train()
@@ -166,7 +254,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
                             (args.epochs - start_epoch) * num_batches, args.min_lr)
     elif args.scheduler in ('crestart', ):
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1, T_mult=1, eta_min=0.01, last_epoch=-1)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
@@ -184,21 +272,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info('Restart dataloader')
                 cur_strength = 0
                 cur_str_times = 1
-                logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
-                if not args.debug:
-                    wandb.log({"Image Guidance": 100-cur_strength})
-                
-                img_text_data = get_data(
-                    args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-                    epoch=0, strength=cur_strength, list_selection=list_classes)
-                ft_dataloader = img_text_data['train_ft'].dataloader
+
+                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
-        logger.info("Epoch : ", epoch)
+        logger.info(f"Epoch : {epoch}")
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
-        Dict_cur_strength = {}
 
         id_flyp_loss_sum = 0
         model.train()
@@ -208,43 +289,32 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         for i in trange(num_batches):
             start_time = time.time()
             step = i + epoch * num_batches
-            if epoch != -1:
-                if args.scheduler == 'crestart':
-                    scheduler.step(epoch)
-                else:
-                    scheduler(step)
             optimizer.zero_grad()
 
             try:
                 ft_batch = next(ft_iterator)
             except StopIteration:
                 if args.curriculum:
-                    if args.curriculum_epoch is None:
-                        cur_strength_id += 1
-                        if cur_strength_id >= len(list_strength):
-                            cur_strength_id = 0
-                        cur_strength = list_strength[cur_strength_id]
-                    elif epoch <= args.curriculum_epoch:
-                        if cur_str_times < loop_times:
-                            cur_str_times += 1
+                    if not args.progress:
+                        # sequentially use strength 
+                        if args.curriculum_epoch is None:
+                            cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
+                        elif epoch <= args.curriculum_epoch:
+                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri')
                         else:
-                            cur_str_times = 1
-                            cur_strength_id += 1
-                            if cur_strength_id >= len(list_strength):
-                                cur_strength_id = len(list_strength) - 1
-                            cur_strength = list_strength[cur_strength_id]
-                    else:
-                        cur_strength = 0
-                        cur_str_times = 1
-                    
-                    logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
-                    if not args.debug:
-                        wandb.log({"Image Guidance": 100-cur_strength})
+                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
 
-                    img_text_data = get_data(
-                        args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-                        epoch=0, strength=cur_strength, list_selection=list_classes)
-                    ft_dataloader = img_text_data['train_ft'].dataloader
+                    else: 
+                        # select strength based on progress
+                        res_progress. str_progress, last_strength = progress_eval(model, args, last_strength)
+                        list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                        list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                        next_guid = list_progress[0]
+                        cur_strength = next_guid[0]
+                        cur_strength_id = list_strength.index(cur_strength)
+                        cur_str_times = 0
+                    
+                    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -261,11 +331,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_clip_loss.backward()
             optimizer.step()
 
+            if args.scheduler == 'crestart':
+                scheduler.step(epoch)
+            else:
+                scheduler(step)
+
             id_flyp_loss_sum += ft_clip_loss.item()
 
+            # Training logging
             if not args.debug:
-                wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
-                
                 if args.scheduler in ('default', 'drestart'):
                     lr = optimizer.param_groups[0]['lr']
                 elif args.scheduler in ('crestart', ):
@@ -273,6 +347,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 else:
                     lr = args.lr
 
+                wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
                 wandb.log({"Learning Rate": lr, })
                 
             if i % print_every == 0:
@@ -283,31 +358,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
-        # Evaluate
-        args.current_epoch = epoch
-        classification_head_new = get_zeroshot_classifier(
-            args, model.module.model)
-        classification_head_new = classification_head_new.cuda()
-
-        # Evaluate progress on different group of strength for this epoch
-        if args.progress_eval:
-            last_results = evaluate(model, args, classification_head_new,
-                                Dict_cur_strength, logger, progress_eval=True)
-            Dict_cur_strength = {key: value for key, value in Dict_cur_strength.items() if 'Acc' in key}
-            str_progress = dict()
-            str_progress['epoch'] = epoch
-            for key, value in Dict_cur_strength.items():
-                if key not in last_strength:
-                    last_strength[key] = 0
-                str_progress[key.replace('Accuracy', 'Progress')] = value - last_strength[key]
-            last_strength = Dict_cur_strength
-
-            df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
-            df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
-
-        eval_results = evaluate(model, args, classification_head_new,
-                                epoch_stats, logger)
-
+        #############################################
         # Saving model
         if args.save is not None:
             os.makedirs(args.save, exist_ok=True)
@@ -318,9 +369,26 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     'cur_str_times': cur_str_times,
                     'cur_strength_id': cur_strength_id,
                     'model_state_dict': model.module.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
                 }, model_path)
+            # optimizer_path = os.path.join(args.save, f'optimizer_{epoch}.pt')
+            # torch.save({'optimizer_state_dict': optimizer.state_dict(),}, optimizer_path)
             logger.info('Saving model to' + str(model_path))
+
+        #############################################
+        # Evaluate progress on different group of strength for this epoch
+        if args.progress_eval:
+            logger.info(f"Progress evaluation ...")
+            _, str_progress, last_strength = progress_eval(model, args, last_strength)
+            str_progress['epoch'] = epoch
+            df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
+            df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
+
+        #############################################
+        # Evaluate
+        logger.info(f"Formal evaluation ...")
+        classification_head_new = generate_class_head(model, args)
+        eval_results = evaluate(model, args, classification_head_new,
+                                epoch_stats, logger)
 
         ood_acc = 0
         num_datasets = 0
@@ -378,13 +446,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
         epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
         epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-
-        if not args.debug:
-            wandb.log(epoch_stats)
                         
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
         stats_df.to_csv(log_dir + '/stats.tsv', sep='\t')
+
+        ################################################
+        # Evaluation logging
+        if not args.debug:
+            wandb.log(epoch_stats)
 
     if args.save is not None:
         return model_path

@@ -243,6 +243,8 @@ def evaluate(image_classifier,
                                         classification_head, progress_eval=True)
 
         if 'strength_top1' in results:
+            # pdb.set_trace()
+
             list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['strength_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:

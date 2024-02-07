@@ -52,6 +52,11 @@ class CsvDataset(Dataset):
 
         if list_selection is not None:
             df = df[df['label'].isin(list_selection)]
+            # add part of other classes data
+            df_other = df[~df['label'].isin(list_selection)]
+            df_other.sample(frac=0.2, replace=True)
+            logging.debug(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
+            df = pd.concat([df, df_other])
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()

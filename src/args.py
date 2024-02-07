@@ -163,6 +163,8 @@ def parse_arguments():
 
     parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--scheduler', type=str, default='default',)
@@ -202,7 +204,7 @@ def parse_arguments():
 
     parser.add_argument("--workers",
                         type=int,
-                        default=16,
+                        default=6,
                         help="Number of dataloader workers per GPU.")
 
     parser.add_argument("--csv-separator",
@@ -262,6 +264,11 @@ def parse_arguments():
         help="wandb group for expr results",
     )
 
+    parser.add_argument("--strength",
+                        type=int,
+                        default=-1,
+                        help="Number of dataloader workers per GPU.")
+                        
     parsed_args = parser.parse_args()
 
     parsed_args.device = "cuda" if torch.cuda.is_available() else "cpu"
