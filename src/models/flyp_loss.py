@@ -19,6 +19,7 @@ from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
 from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
 import src.datasets as datasets
+import random
 import pdb
 import math
 import wandb
@@ -75,7 +76,7 @@ def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, li
     return ft_dataloader
 
 
-def generate_class_head(model, args):
+def generate_class_head(model, args, epoch):
     # get classification head embedding
     args.current_epoch = epoch
     classification_head_new = get_zeroshot_classifier(
@@ -84,8 +85,8 @@ def generate_class_head(model, args):
     return classification_head_new
 
 
-def progress_eval(model, args, last_strength):
-    classification_head_new = generate_class_head(model, args)
+def progress_eval(model, args, last_strength, epoch, logger):
+    classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_strength = {}
     last_results = evaluate(model, args, classification_head_new,
                                     Dict_cur_strength, logger, progress_eval=True)
@@ -105,7 +106,7 @@ def progress_eval(model, args, last_strength):
     return res_progress, str_progress, last_strength
 
 
-def flyp_loss_progress(args, clip_encoder, classification_head, logger):
+def flyp_loss(args, clip_encoder, classification_head, logger):
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
     model = clip_encoder
@@ -127,8 +128,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-        model_path = os.path.join("checkpoints/flyp_loss_base_progress/saved", f'checkpoint_11.pt')
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        # model_path = os.path.join("checkpoints/flyp_loss_base_progress/saved", f'checkpoint_11.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
         # model.load_state_dict(checkpoint)
@@ -183,6 +184,11 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
 
+    # init wandb if not debug mode
+    if not args.debug:
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.watch(model, log="gradients", log_freq=100)
+
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
         if args.cont_finetune:
@@ -209,6 +215,11 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 cur_strength_id = 0
                 cur_strength = list_strength[cur_strength_id]
     
+    elif args.baseline:
+        # train baseline
+        cur_strength_id = 0
+        cur_strength = 0
+
     # run progress eval after single strength training
     if args.strength != -1:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
@@ -230,11 +241,6 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
             num_batches = num_batch_ori
     logger.info(f"Num batches is {num_batches}")
 
-    # init wandb if not debug mode
-    if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
-        wandb.watch(model, log="gradients", log_freq=100)
-
     classification_head.train()
     model.train()
 
@@ -253,6 +259,9 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
                             (args.epochs - start_epoch) * num_batches, args.min_lr)
+    elif args.scheduler in ('default_slower', ):
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                            (args.epochs - start_epoch) * num_batches * 2, args.min_lr)
     elif args.scheduler in ('crestart', ):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
@@ -306,10 +315,20 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
                     else: 
                         # select strength based on progress
-                        res_progress. str_progress, last_strength = progress_eval(model, args, last_strength)
+                        res_progress, str_progress, last_strength = progress_eval(model, args, last_strength, epoch, logger)
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                        next_guid = list_progress[0]
+                        largest_guid = list_progress[0]
+                        if args.explore:
+                            # randomly select a guid with 15%, use the largest with 85%
+                            rand_prob = random.uniform(0, 1)
+                            if rand_prob <= 0.15:
+                                next_guid = random.choice(list_progress)
+                            else:
+                                next_guid = largest_guid
+                        else:
+                            next_guid = largest_guid
+
                         cur_strength = next_guid[0]
                         cur_strength_id = list_strength.index(cur_strength)
                         cur_str_times = 0
@@ -347,8 +366,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 else:
                     lr = args.lr
 
-                wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
-                wandb.log({"Learning Rate": lr, })
+                wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
                 
             if i % print_every == 0:
                 percent_complete = 100 * i / num_batches
@@ -378,7 +396,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         # Evaluate progress on different group of strength for this epoch
         if args.progress_eval:
             logger.info(f"Progress evaluation ...")
-            _, str_progress, last_strength = progress_eval(model, args, last_strength)
+            _, str_progress, last_strength = progress_eval(model, args, last_strength, epoch, logger)
             str_progress['epoch'] = epoch
             df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
             df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
@@ -386,7 +404,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         #############################################
         # Evaluate
         logger.info(f"Formal evaluation ...")
-        classification_head_new = generate_class_head(model, args)
+        classification_head_new = generate_class_head(model, args, epoch)
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)
 
