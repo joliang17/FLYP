@@ -159,11 +159,17 @@ def parse_arguments():
 
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--baseline', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--cont_finetune', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--ma_progress', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--explore', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
 

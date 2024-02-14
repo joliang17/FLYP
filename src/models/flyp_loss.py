@@ -26,7 +26,7 @@ import wandb
 import numpy as np
 
 
-def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None, ctype='out_curri'):
+def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
     # sequentially use strength 
     if ctype == 'no_curri':
         # iteratively loop over all guidance
@@ -47,8 +47,8 @@ def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None
 
             if cur_strength_id >= len(list_strength):
                 cur_strength_id = len(list_strength) - 1
-            cur_strength = list_strength[cur_strength_id]
 
+        cur_strength = list_strength[cur_strength_id]
         return cur_strength_id, cur_strength, cur_str_times
 
     elif ctype == 'out_curri':
@@ -85,13 +85,15 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def progress_eval(model, args, last_strength, epoch, logger):
+def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_strength = {}
     last_results = evaluate(model, args, classification_head_new,
                                     Dict_cur_strength, logger, progress_eval=True)
     str_progress = dict()
     res_progress = dict()
+    cur_stats = dict()
+
     for key, value in Dict_cur_strength.items():
         if 'Number' in key: 
             continue
@@ -99,11 +101,20 @@ def progress_eval(model, args, last_strength, epoch, logger):
             last_strength[key] = 0
 
         guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
+
+        # compute moving average of progress
+        if args.ma_progress and progress_ma is not None:
+            # adding current eval to ma list
+            progress_ma[guidance_i].append(value)
+            # compute for average here
+            value = np.mean(np.array(progress_ma[guidance_i]))
+
         str_progress[f"Guidance {100-guidance_i}"] = np.round(value - last_strength[key], 6)
         res_progress[guidance_i] = value - last_strength[key]
+        cur_stats[guidance_i] = value
 
     last_strength = copy.deepcopy(Dict_cur_strength)
-    return res_progress, str_progress, last_strength
+    return res_progress, str_progress, last_strength, cur_stats
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
@@ -132,8 +143,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # model_path = os.path.join("checkpoints/flyp_loss_base_progress/saved", f'checkpoint_11.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        # model.load_state_dict(checkpoint)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)
+        # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -290,6 +301,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         epoch_stats = {}
         epoch_stats['epoch'] = epoch
 
+        progress_ma = dict()
+
         id_flyp_loss_sum = 0
         model.train()
         model = model.cuda()
@@ -309,13 +322,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         if args.curriculum_epoch is None:
                             cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
                         elif epoch <= args.curriculum_epoch:
-                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri')
+                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
                         else:
                             cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
 
                     else: 
                         # select strength based on progress
-                        res_progress, str_progress, last_strength = progress_eval(model, args, last_strength, epoch, logger)
+                        res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
                         largest_guid = list_progress[0]
@@ -359,7 +372,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             # Training logging
             if not args.debug:
-                if args.scheduler in ('default', 'drestart'):
+                if args.scheduler in ('default', 'drestart', 'default_slower'):
                     lr = optimizer.param_groups[0]['lr']
                 elif args.scheduler in ('crestart', ):
                     lr = scheduler.get_lr()[0]
@@ -374,11 +387,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                     f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
+            if args.ma_progress and (num_batches - i) in (5, 10, 15, 20, 25, ):
+                logger.info(f"Running progress evaluation for moving average with i={i}")
+                # calculate progress multiple times
+                res_progress, _, _, _ = progress_eval(model, args, last_strength, epoch, logger)
+
+                for guid, value in res_progress.items():
+                    if guid not in progress_ma:
+                        progress_ma[guid] = []
+                    progress_ma[guid].append(value)
+
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
         #############################################
         # Saving model
-        if args.save is not None:
+        if args.save is not None and not args.ma_progress:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
             torch.save({
@@ -396,10 +419,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Evaluate progress on different group of strength for this epoch
         if args.progress_eval:
             logger.info(f"Progress evaluation ...")
-            _, str_progress, last_strength = progress_eval(model, args, last_strength, epoch, logger)
+            _, str_progress, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger, progress_ma=progress_ma)
+
             str_progress['epoch'] = epoch
             df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
             df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
+            progress_ma = dict()
 
         #############################################
         # Evaluate
