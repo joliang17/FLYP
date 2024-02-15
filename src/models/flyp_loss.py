@@ -19,6 +19,7 @@ from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
 from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
 import src.datasets as datasets
+import pickle
 import random
 import pdb
 import math
@@ -139,12 +140,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-        # model_path = os.path.join("checkpoints/flyp_loss_base_progress/saved", f'checkpoint_11.pt')
+        # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)
-        # model.load_state_dict(checkpoint['model_state_dict'])
+        # model.load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -308,94 +309,95 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         model = model.cuda()
         classification_head.train()
 
-        for i in trange(num_batches):
-            start_time = time.time()
-            step = i + epoch * num_batches
-            optimizer.zero_grad()
+        if not args.test:
+            for i in trange(num_batches):
+                start_time = time.time()
+                step = i + epoch * num_batches
+                optimizer.zero_grad()
 
-            try:
-                ft_batch = next(ft_iterator)
-            except StopIteration:
-                if args.curriculum:
-                    if not args.progress:
-                        # sequentially use strength 
-                        if args.curriculum_epoch is None:
-                            cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
-                        elif epoch <= args.curriculum_epoch:
-                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
-                        else:
-                            cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
+                try:
+                    ft_batch = next(ft_iterator)
+                except StopIteration:
+                    if args.curriculum:
+                        if not args.progress:
+                            # sequentially use strength 
+                            if args.curriculum_epoch is None:
+                                cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
+                            elif epoch <= args.curriculum_epoch:
+                                cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
+                            else:
+                                cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
 
-                    else: 
-                        # select strength based on progress
-                        res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
-                        list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                        list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                        largest_guid = list_progress[0]
-                        if args.explore:
-                            # randomly select a guid with 15%, use the largest with 85%
-                            rand_prob = random.uniform(0, 1)
-                            if rand_prob <= 0.15:
-                                next_guid = random.choice(list_progress)
+                        else: 
+                            # select strength based on progress
+                            res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
+                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                            largest_guid = list_progress[0]
+                            if args.explore:
+                                # randomly select a guid with 15%, use the largest with 85%
+                                rand_prob = random.uniform(0, 1)
+                                if rand_prob <= 0.15:
+                                    next_guid = random.choice(list_progress)
+                                else:
+                                    next_guid = largest_guid
                             else:
                                 next_guid = largest_guid
-                        else:
-                            next_guid = largest_guid
 
-                        cur_strength = next_guid[0]
-                        cur_strength_id = list_strength.index(cur_strength)
-                        cur_str_times = 0
-                    
-                    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+                            cur_strength = next_guid[0]
+                            cur_strength_id = list_strength.index(cur_strength)
+                            cur_str_times = 0
+                        
+                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
 
-                ft_iterator = iter(ft_dataloader)
-                ft_batch = next(ft_iterator)
+                    ft_iterator = iter(ft_dataloader)
+                    ft_batch = next(ft_iterator)
 
-            ft_image, ft_text = ft_batch
-            ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
+                ft_image, ft_text = ft_batch
+                ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
-            ft_image_features, ft_text_features, logit_scale2 = model(
-                ft_image, ft_text)
-            ft_clip_loss = clip_loss_fn(ft_image_features,
-                                        ft_text_features,
-                                        logit_scale2)
+                ft_image_features, ft_text_features, logit_scale2 = model(
+                    ft_image, ft_text)
+                ft_clip_loss = clip_loss_fn(ft_image_features,
+                                            ft_text_features,
+                                            logit_scale2)
 
-            ft_clip_loss.backward()
-            optimizer.step()
+                ft_clip_loss.backward()
+                optimizer.step()
 
-            if args.scheduler == 'crestart':
-                scheduler.step(epoch)
-            else:
-                scheduler(step)
-
-            id_flyp_loss_sum += ft_clip_loss.item()
-
-            # Training logging
-            if not args.debug:
-                if args.scheduler in ('default', 'drestart', 'default_slower'):
-                    lr = optimizer.param_groups[0]['lr']
-                elif args.scheduler in ('crestart', ):
-                    lr = scheduler.get_lr()[0]
+                if args.scheduler == 'crestart':
+                    scheduler.step(epoch)
                 else:
-                    lr = args.lr
+                    scheduler(step)
 
-                wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
-                
-            if i % print_every == 0:
-                percent_complete = 100 * i / num_batches
-                logger.info(
-                    f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
-                    f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
+                id_flyp_loss_sum += ft_clip_loss.item()
 
-            if args.ma_progress and (num_batches - i) % 100 == 0:
-                logger.info(f"Running progress evaluation for moving average with i={i}")
-                # calculate progress multiple times
-                _, _, _, cur_stats = progress_eval(model, args, last_strength, epoch, logger)
+                # Training logging
+                if not args.debug:
+                    if args.scheduler in ('default', 'drestart', 'default_slower'):
+                        lr = optimizer.param_groups[0]['lr']
+                    elif args.scheduler in ('crestart', ):
+                        lr = scheduler.get_lr()[0]
+                    else:
+                        lr = args.lr
 
-                for guid, value in cur_stats.items():
-                    if guid not in progress_ma:
-                        progress_ma[guid] = []
-                    progress_ma[guid].append(value)
+                    wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
+                    
+                if i % print_every == 0:
+                    percent_complete = 100 * i / num_batches
+                    logger.info(
+                        f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
+                        f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
+
+                if args.ma_progress and (num_batches - i) % 100 == 0:
+                    logger.info(f"Running progress evaluation for moving average with i={i}")
+                    # calculate progress multiple times
+                    _, _, _, cur_stats = progress_eval(model, args, last_strength, epoch, logger)
+
+                    for guid, value in cur_stats.items():
+                        if guid not in progress_ma:
+                            progress_ma[guid] = []
+                        progress_ma[guid].append(value)
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
@@ -427,7 +429,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             
             # save progress_ma:
             with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
-                pickle.dump(progress_ma, f)
+                pickle.dump([last_strength, progress_ma], f)
 
             progress_ma = dict()
 

@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from src.models.eval import evaluate
 from src.models.flyp_loss import flyp_loss
+from src.models.flyp_loss_progress import flyp_loss_progress
 from src.models.ce_ablation import ce_ablation
 from src.models.modeling import ClassificationHead, CLIPEncoder, ImageClassifier
 from src.models.utils import fisher_load
@@ -43,6 +44,10 @@ def main(args):
     if args.ce_ablation:
         finetuned_checkpoint = ce_ablation(args, clip_encoder,
                                             classification_head, logger)
+    elif args.progress_validation:
+        finetuned_checkpoint = flyp_loss_progress(args, clip_encoder,
+                                            classification_head, logger)
+
     else:
         finetuned_checkpoint = flyp_loss(args, clip_encoder,
                                             classification_head, logger)

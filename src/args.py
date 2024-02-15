@@ -167,11 +167,15 @@ def parse_arguments():
 
     parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--progress_validation', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--ma_progress', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--test', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--scheduler', type=str, default='default',)
 
