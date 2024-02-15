@@ -387,12 +387,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                     f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.ma_progress and (num_batches - i) in (5, 10, 15, 20, 25, ):
+            if args.ma_progress and (num_batches - i) % 100 == 0:
                 logger.info(f"Running progress evaluation for moving average with i={i}")
                 # calculate progress multiple times
-                res_progress, _, _, _ = progress_eval(model, args, last_strength, epoch, logger)
+                _, _, _, cur_stats = progress_eval(model, args, last_strength, epoch, logger)
 
-                for guid, value in res_progress.items():
+                for guid, value in cur_stats.items():
                     if guid not in progress_ma:
                         progress_ma[guid] = []
                     progress_ma[guid].append(value)
@@ -424,6 +424,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             str_progress['epoch'] = epoch
             df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
             df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
+            
+            # save progress_ma:
+            with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
+                pickle.dump(progress_ma, f)
+
             progress_ma = dict()
 
         #############################################
