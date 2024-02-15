@@ -278,7 +278,7 @@ def evaluate(image_classifier,
             list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['class_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:
-                logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
+                # logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
                 train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
                 train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
