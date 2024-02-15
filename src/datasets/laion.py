@@ -43,12 +43,17 @@ class CsvDataset(Dataset):
                  label_key=None,
                  strength=None,
                  list_selection=None,
+                #  proporttion
                  return_strength=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
-
+        
         if strength is not None:
             df = df[df['strength']==strength]
+
+        ##########################
+        # mixture from original data * image guidance
+        # TODO:
 
         if list_selection is not None:
             df = df[df['label'].isin(list_selection)]

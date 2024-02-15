@@ -12,3 +12,4 @@ from .stanfordcars import StanfordCarsVal, StanfordCarsTest
 from .flowers102 import Flowers102Val, Flowers102Test
 from .patchcamelyon import PatchCamelyonVal, PatchCamelyonTest
 from .sst2 import sst2Val, sst2Test
+from .oxfordPet import OxfordPet, OxfordPetVal, OxfordPetTest

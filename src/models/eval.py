@@ -46,7 +46,14 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                                     is_train=False,
                                     args=args,
                                     image_encoder=image_enc)
+        
+        ## for oxfordpet dataset
+        if getattr(dataset, 'index_cat', None) is not None:
+            list_index_cat = dataset.index_cat
+            list_index_dog = dataset.index_dog
 
+            index_dog = 79
+            index_cat = 66
     else:
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, ).dataloader
     
@@ -62,7 +69,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         dict_class = dict()
         dict_strength = dict()
         for i, data in batched_data:
-
             data = maybe_dictionarize(data, progress_eval=progress_eval)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
@@ -81,6 +87,16 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             if hasattr(dataset, 'project_labels'):
                 y = dataset.project_labels(y, device)
             pred = logits.argmax(dim=1, keepdim=True).to(device)
+
+            ## for oxfordpet dataset
+            if getattr(dataset, 'index_cat', None) is not None:
+                y_new = torch.ones_like(y) * index_cat
+                for i in range(len(y)):
+                    if y[i] not in list_index_cat:
+                        y_new[i] = index_dog
+                y = y_new  
+                pdb.set_trace()
+
             if hasattr(dataset, 'accuracy'):
                 acc1, num_total = dataset.accuracy(logits, y, image_paths,
                                                    args)
