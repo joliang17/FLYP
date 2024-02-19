@@ -60,17 +60,20 @@ def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, epoch=0):
+def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, epoch=0, ori_proportion=None):
 
     if cur_strength is not None:
         logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
         if not args.debug:
             wandb.log({"Epoch": epoch, "Image Guidance": 100-cur_strength})
+            if ori_proportion is not None:
+                wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
+
 
     # load dataloader
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0, strength=cur_strength, list_selection=list_classes)
+        epoch=0, strength=cur_strength, list_selection=list_classes, ori_proportion=ori_proportion)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -98,10 +101,12 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
     for key, value in Dict_cur_strength.items():
         if 'Number' in key: 
             continue
+        if 'F1' not in key:
+            continue
         if key not in last_strength:
             last_strength[key] = 0
 
-        guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
+        guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', '')).replace(' F1', '')
 
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
@@ -249,7 +254,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         cur_strength_id = 0
         cur_strength = args.strength
 
-    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0)
+    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0, ori_proportion=0.1)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -301,7 +306,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 cur_strength = 0
                 cur_str_times = 1
 
-                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch)
+                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=None)
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
@@ -325,22 +330,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 try:
                     ft_batch = next(ft_iterator)
                 except StopIteration:
+                    ori_proportion = None
                     if args.curriculum:
-                        if not args.progress:
-                            # sequentially use strength 
-                            if args.curriculum_epoch is None:
-                                cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
-                            elif epoch <= args.curriculum_epoch:
-                                cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
-                            else:
-                                cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
+                        if epoch > args.curriculum_epoch:
+                            cur_strength = 0
+                            cur_strength_id = list_strength.index(cur_strength)
+                            cur_str_times = 1
+                        else:
+                            if not args.progress:
+                                # sequentially use strength 
+                                if args.curriculum_epoch is None:
+                                    cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
+                                else:
+                                    cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
 
-                        else: 
-                            if epoch <= args.curriculum_epoch:
-                                cur_strength = 0
-                                cur_strength_id = list_strength.index(cur_strength)
-                                cur_str_times = 1
-                            else:
+                            else: 
                                 # select strength based on progress
                                 res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
                                 list_progress = [(guid, prog) for guid, prog in res_progress.items()]
@@ -359,8 +363,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 cur_strength = next_guid[0]
                                 cur_strength_id = list_strength.index(cur_strength)
                                 cur_str_times = 0
-                        
-                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch)
+
+                            if args.proportion:
+                                ori_proportion = 1 / args.curriculum_epoch * epoch
+
+                        # TODO: ori_proportion
+                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=ori_proportion)
 
                     ft_iterator = iter(ft_dataloader)
                     ft_batch = next(ft_iterator)

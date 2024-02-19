@@ -43,24 +43,33 @@ class CsvDataset(Dataset):
                  label_key=None,
                  strength=None,
                  list_selection=None,
-                #  proporttion
+                 ori_proportion=None,
                  return_strength=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
         
-        if strength is not None:
-            df = df[df['strength']==strength]
-
         ##########################
         # mixture from original data * image guidance
         # TODO:
+        if ori_proportion is not None:
+            df_ori = df[df['strength']==0]
+
+        if strength is not None:
+            df = df[df['strength']==strength]
+
+        if ori_proportion is not None:
+            num_df = len(df)
+            num_ori = min(len(df_ori), int(num_df/(1-ori_proportion) * ori_proportion))
+            df_ori.sample(n=num_ori, replace=True)
+            df = pd.concat([df, df_ori])
+            logging.info(f'Loading csv data from {input_filename}.')
 
         if list_selection is not None:
             df = df[df['label'].isin(list_selection)]
             # add part of other classes data
             df_other = df[~df['label'].isin(list_selection)]
             df_other.sample(frac=0.2, replace=True)
-            logging.debug(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
+            logging.info(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
             df = pd.concat([df, df_other])
 
         self.images = df[img_key].tolist()
@@ -82,7 +91,9 @@ class CsvDataset(Dataset):
             self.labels = list(map(int, df[label_key].tolist()))
             self.img_path = df["filepath"].tolist()
         self.transforms = transforms
-        logging.debug('Done loading data.')
+
+        self.classes = max(self.labels) + 1
+        logging.info(f'Loading data with length {len(self.images)}.')
 
     def __len__(self):
         return len(self.captions)
@@ -505,7 +516,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None, return_strength=False):
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None, return_strength=False, ori_proportion=None):
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
@@ -526,7 +537,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_
                          label_key=label_key, 
                          strength=strength, 
                          list_selection=list_selection,
-                         return_strength=return_strength)
+                         return_strength=return_strength, 
+                         ori_proportion=ori_proportion,)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -543,6 +555,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_
     )
     dataloader.num_samples = num_samples
     dataloader.num_batches = len(dataloader)
+    dataloader.num_classes = dataset.classes
 
     return DataInfo(dataloader, sampler)
 
@@ -566,7 +579,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None):
+def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None, ori_proportion=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -575,6 +588,7 @@ def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None):
                                                          preprocess_train,
                                                          is_train=True,
                                                          epoch=epoch, 
-                                                         strength=strength, list_selection=list_selection)
+                                                         strength=strength, list_selection=list_selection,
+                                                         ori_proportion=ori_proportion,)
 
     return data

@@ -9,6 +9,7 @@ from src.datasets.laion import get_data, get_csv_dataset
 
 import src.datasets as datasets
 import torch.nn.functional as F
+from torcheval.metrics.functional import multiclass_f1_score
 import pdb
 
 
@@ -39,6 +40,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if progress_eval:
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_strength=True).dataloader
+        num_classes = dataloader.num_classes
 
     elif not args.self_data:
         ## equals to dataloader = dataset.test_loader
@@ -63,6 +65,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if args.self_data or hasattr(dataset, 'post_loop_metrics'):
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
+    
+    if progress_eval:
+        dict_labels = dict()
+        dict_preds = dict()
 
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
@@ -95,7 +101,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     if y[i] not in list_index_cat:
                         y_new[i] = index_dog
                 y = y_new  
-                pdb.set_trace()
+                # pdb.set_trace()
 
             if hasattr(dataset, 'accuracy'):
                 acc1, num_total = dataset.accuracy(logits, y, image_paths,
@@ -126,6 +132,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                         sap_ids = (strength == str_i).nonzero(as_tuple=True)
                         cur_pred = pred[sap_ids]
                         cur_y = y[sap_ids]
+
                         cur_correct = cur_pred.eq(cur_y.view_as(cur_pred)).sum().item()
                         cur_num = len(sap_ids[0])
                         if str_i not in dict_strength:
@@ -133,6 +140,12 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                         
                         dict_strength[str_i][0] += cur_correct
                         dict_strength[str_i][1] += cur_num
+
+                        if str_i not in dict_labels:
+                            dict_labels[str_i] = []
+                            dict_preds[str_i] = []
+                        dict_labels[str_i].append(cur_y.cpu().clone().detach())
+                        dict_preds[str_i].append(cur_pred.cpu().clone().detach())
 
             if args.self_data or hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -160,6 +173,17 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                 metrics['top1'] = metrics['acc']
         else:
             metrics = {}
+    
+    if progress_eval:
+        dict_strength_f1 = dict()
+        for str_i in dict_labels.keys():
+            cur_str_labels = dict_labels[str_i]
+            cur_str_preds = dict_preds[str_i]
+            cur_str_labels = torch.cat(cur_str_labels)
+            cur_str_preds = torch.cat(cur_str_preds)
+            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=100, average="macro")
+            dict_strength_f1[str_i] = f1_cur_str
+        metrics['strength_f1'] = dict_strength_f1
 
     if 'top1' not in metrics:
         metrics['top1'] = top1
@@ -257,6 +281,13 @@ def evaluate(image_classifier,
         dataset = None
         results = eval_single_dataset(image_classifier, dataset, args,
                                         classification_head, progress_eval=True)
+        if 'strength_f1' in results:
+            dict_strength_f1 = results['strength_f1']
+            list_acc = [[key, value] for key, value in dict_strength_f1.items()]
+
+            for pair in list_acc:
+                logging_input(f"Strength F1: {pair[0]} {pair[1]:.4f}", logger)
+                train_stats[f"Strength {pair[0]} F1"] = round(pair[1], 4)
 
         if 'strength_top1' in results:
             # pdb.set_trace()

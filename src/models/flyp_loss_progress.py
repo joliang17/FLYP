@@ -102,18 +102,18 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
         if key not in last_strength:
             last_strength[key] = 0
 
-        guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
+        strength_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
 
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
             # adding current eval to ma list
-            progress_ma[guidance_i].append(value)
+            progress_ma[strength_i].append(value)
             # compute for average here
-            value = np.mean(np.array(progress_ma[guidance_i]))
+            value = np.mean(np.array(progress_ma[strength_i]))
 
-        str_progress[f"Guidance {100-guidance_i}"] = np.round(value - last_strength[key], 6)
-        res_progress[guidance_i] = value - last_strength[key]
-        cur_stats[guidance_i] = value
+        str_progress[f"Guidance {100-strength_i}"] = np.round(value - last_strength[key], 6)
+        res_progress[strength_i] = value - last_strength[key]
+        cur_stats[strength_i] = value
 
     last_strength = copy.deepcopy(Dict_cur_strength)
     return res_progress, str_progress, last_strength, cur_stats
@@ -332,7 +332,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
             # # 2. eval progress of different guidance based on this last model
             res_progress, str_progress, last_strength, _ = progress_eval(model, args, last_strength, epoch=-1, logger=logger)
-            list_progress = [(guid, value) for guid, value in res_progress.items()]
+            list_progress = [(strgh, value) for strgh, value in res_progress.items()]
             list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
 
             str_progress['epoch'] = epoch
@@ -353,7 +353,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 logger.info(f'start step: {str(step)}')
 
                 # load guidance data
-                guid_int = guid_pair[0]
+                guid_int = 100 - guid_pair[0]
                 progress = guid_pair[1]
                 
                 cur_guid_path = copy.deepcopy(last_guid_path)
