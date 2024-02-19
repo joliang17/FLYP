@@ -179,6 +179,8 @@ def parse_arguments():
 
     parser.add_argument('--scheduler', type=str, default='default',)
 
+    parser.add_argument('--datalimit', type=int, default=-1,)
+
     parser.add_argument(
         "--curriculum_epoch",
         type=int,

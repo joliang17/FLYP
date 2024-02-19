@@ -60,12 +60,12 @@ def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, ):
+def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, epoch=0):
 
     if cur_strength is not None:
         logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
         if not args.debug:
-            wandb.log({"Image Guidance": 100-cur_strength})
+            wandb.log({"Epoch": epoch, "Image Guidance": 100-cur_strength})
 
     # load dataloader
     img_text_data = get_data(
@@ -119,6 +119,8 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
+    model_path = ''
+
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
     model = clip_encoder
@@ -238,11 +240,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         df_ori = df_ori[df_ori['strength'] == args.strength]
         len_data = len(df_ori)
 
+        if args.datalimit != -1:
+            logger.info(f"Sample {args.datalimit} from original dataset")
+            df_ori = df_ori.sample(n=min(len_data, args.datalimit), random_state=1)
+            len_data = len(df_ori)
+
         list_strength = [args.strength, ]
         cur_strength_id = 0
         cur_strength = args.strength
 
-    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -294,7 +301,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 cur_strength = 0
                 cur_str_times = 1
 
-                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch)
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
@@ -329,26 +336,31 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, ctype='out_curri')
 
                         else: 
-                            # select strength based on progress
-                            res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
-                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                            largest_guid = list_progress[0]
-                            if args.explore:
-                                # randomly select a guid with 15%, use the largest with 85%
-                                rand_prob = random.uniform(0, 1)
-                                if rand_prob <= 0.15:
-                                    next_guid = random.choice(list_progress)
+                            if epoch <= args.curriculum_epoch:
+                                cur_strength = 0
+                                cur_strength_id = list_strength.index(cur_strength)
+                                cur_str_times = 1
+                            else:
+                                # select strength based on progress
+                                res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
+                                list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                                list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                                largest_guid = list_progress[0]
+                                if args.explore:
+                                    # randomly select a guid with 15%, use the largest with 85%
+                                    rand_prob = random.uniform(0, 1)
+                                    if rand_prob <= 0.15:
+                                        next_guid = random.choice(list_progress)
+                                    else:
+                                        next_guid = largest_guid
                                 else:
                                     next_guid = largest_guid
-                            else:
-                                next_guid = largest_guid
 
-                            cur_strength = next_guid[0]
-                            cur_strength_id = list_strength.index(cur_strength)
-                            cur_str_times = 0
+                                cur_strength = next_guid[0]
+                                cur_strength_id = list_strength.index(cur_strength)
+                                cur_str_times = 0
                         
-                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch)
 
                     ft_iterator = iter(ft_dataloader)
                     ft_batch = next(ft_iterator)

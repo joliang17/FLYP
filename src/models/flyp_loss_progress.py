@@ -165,7 +165,9 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 res_progress["Epoch"] = epoch
                 res_progress["Trained_guid"] = guid
                 # wandb.log(res_progress)
-        return cur_step
+                
+        id_flyp_loss_avg = id_flyp_loss_sum / num_batches
+        return cur_step, id_flyp_loss_avg
 
     def loading_model(model_path):
         logger.info('Loading model ' + str(model_path))
@@ -360,7 +362,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
                 # train model
                 # pdb.set_trace()
-                step = train_model_basedon_guid(guid_int, step)
+                step, id_flyp_loss_avg = train_model_basedon_guid(guid_int, step)
                 # pdb.set_trace()
                 logger.info(f'end step: {step}')
                 
