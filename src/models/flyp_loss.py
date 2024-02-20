@@ -319,7 +319,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             if cur_guidance != 0:
                 logger.info('Restart dataloader')
-                cur_guidance = len(list_guidance) - 1
+                cur_guidance = 100
+                cur_guidance_id = list_guidance.index(cur_guidance)
                 cur_str_times = 1
 
                 ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
@@ -331,6 +332,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         logger.info(f"Epoch : {epoch}")
         epoch_stats = {}
         epoch_stats['Epoch'] = epoch
+        epoch_stats['epoch'] = epoch
 
         progress_ma = dict()
 
