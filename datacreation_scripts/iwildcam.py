@@ -8,13 +8,16 @@ from sklearn.model_selection import train_test_split
 from typing import List, Dict
 from tqdm import tqdm
 
-def filter_img(clip_path: str, threshold: float):
+
+def filter_img(clip_path: str,
+               threshold: float):
     dict_filt = dict()
     if os.path.exists(clip_path):
         with open(clip_path, 'rb') as f:
             dict_clip_res = pickle.load(f)
         list_filtered = list(dict_clip_res.items())
-        list_filtered = [[item[0].split('='), item[1][0][0]] for item in list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
+        list_filtered = [[item[0].split('='), item[1][0][0]] for item in
+                         list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
         list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
         for pair in list_filtered:
             cur_sp = pair[0]
@@ -61,7 +64,7 @@ def main(args):
             for cur_sp_f in img_sp_folder:
                 cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
                 cur_sp_name = cur_sp_f.replace('_', ' ')
-                cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+                cur_y = label_to_name[label_to_name['name'] == cur_sp_name]['y'].values[0]
                 if cur_y not in list_y:
                     list_y.append(cur_y)
 
@@ -76,12 +79,13 @@ def main(args):
                         cur_img_path = os.path.join(cur_cate_path, img_name)
                         img_name = img_name.replace('.jpg', '')
                         if len(Dict_filt) > 0:
-                            if cate in Dict_filt and cur_sp_f in Dict_filt[cate] and img_name.replace('.jpg', '') in Dict_filt[cate][cur_sp_f]:
+                            if cate in Dict_filt and cur_sp_f in Dict_filt[cate] and img_name.replace('.jpg', '') in \
+                                    Dict_filt[cate][cur_sp_f]:
                                 list_result.append([cur_y, cur_img_path, cur_strength])
 
                         else:
                             list_result.append([cur_y, cur_img_path, cur_strength])
-        
+
         if not args.total_train:
             #############################################
             # if using part of the original training data
@@ -92,7 +96,7 @@ def main(args):
             for cur_sp_f in img_sp_folder_ori:
                 cur_sp_path = os.path.join(data_path, cur_sp_f)
                 cur_sp_name = cur_sp_f.replace('_', ' ')
-                cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+                cur_y = label_to_name[label_to_name['name'] == cur_sp_name]['y'].values[0]
                 if cur_y not in list_y:
                     list_y.append(cur_y)
                 list_imgs = os.listdir(cur_sp_path)
@@ -107,7 +111,7 @@ def main(args):
             df_train_ori = pd.read_csv('./datasets/csv/iwildcam_v2.0/train.csv', sep='\t')
             del df_train_ori['title']
             df_train_ori.drop_duplicates(subset=['filepath', 'label'], keep='last', inplace=True)
-            df_train_ori.rename({'filepath': 'filename','label': 'y'}, axis='columns', inplace=True)
+            df_train_ori.rename({'filepath': 'filename', 'label': 'y'}, axis='columns', inplace=True)
             df_train_ori['strength'] = 0
             df_train_ori = df_train_ori[['y', 'filename', 'strength']]
             cur_train_ori = df_train_ori.values.tolist()
@@ -131,7 +135,7 @@ def main(args):
             new_saved_path = os.path.join(cur_sp_path, 'new_saved')
             os.makedirs(new_saved_path, exist_ok=True)
 
-            cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+            cur_y = label_to_name[label_to_name['name'] == cur_sp_name]['y'].values[0]
             if cur_y not in list_y:
                 list_y.append(cur_y)
 
@@ -149,7 +153,8 @@ def main(args):
                     new_path = new_saved_path + f'/{img_id}_{cate}.pkl'
 
                     if len(Dict_filt) > 0:
-                        if cate in Dict_filt and cur_sp_name_under in Dict_filt[cate] and img_id in Dict_filt[cate][cur_sp_name_under]:
+                        if cate in Dict_filt and cur_sp_name_under in Dict_filt[cate] and img_id in Dict_filt[cate][
+                            cur_sp_name_under]:
                             with open(new_path, 'wb') as f:
                                 pickle.dump(pair[1], f)
                             list_result.append([cur_y, new_path, cur_strength])
@@ -165,12 +170,12 @@ def main(args):
 
         img_sp_folder_test = os.listdir(args.input_folder)
         img_sp_folder_test = [item for item in img_sp_folder_test if item in img_sp_folder_train]
-        
+
         cur_strength = 0
         for cur_sp_f in img_sp_folder_test:
             cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
-            cur_y = label_to_name[label_to_name['name']==cur_sp_name]['y'].values[0]
+            cur_y = label_to_name[label_to_name['name'] == cur_sp_name]['y'].values[0]
             list_imgs = os.listdir(cur_sp_path)
             list_imgs = [item for item in list_imgs if 'jpg' in item]
             for img_name in list_imgs:
@@ -178,8 +183,14 @@ def main(args):
                 list_result.append([cur_y, cur_img_path, cur_strength])
 
     df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength'])
-    df.loc[:, 'guidance'] = df['strength'].apply(lambda x: 100-int(x))
-    
+    df.loc[:, 'guidance'] = df['strength'].apply(lambda x: 100 - int(x))
+    df.loc[:, 'img_name'] = df['filename'].apply(lambda x: x.split('/')[-1].replace('.jpg', ''))
+    # change img_name to int img_id
+    df_count = df.groupby(['img_name']).count()['guidance']
+    list_guid_img_name = list(df_count[df_count > 2].index)  # largest 7715
+    Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
+    df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -1)
+
     if args.random:
         print(len(df))
         df_group = df.groupby('strength')
@@ -220,21 +231,22 @@ def main(args):
                    on='y').rename({'prompt1': 'title'}, axis='columns')
     df2 = pd.merge(df, label_to_name[['y', 'prompt2']],
                    on='y').rename({'prompt2': 'title'}, axis='columns')
-    df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance']]
+    df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
 
     del df1
     del df2
     del df
 
-    df_final = df_final.rename({'filename': 'filepath','y': 'label'},
-                               axis='columns')[['title', 'filepath', 'label', 'strength', 'guidance']]
+    df_final = df_final.rename({'filename': 'filepath', 'y': 'label'},
+                               axis='columns')[['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
 
     df_final.to_csv(os.path.join(args.save_folder, f'{args.mode}.csv'), sep='\t', index=False, header=True)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
-    parser.add_argument('--mode', default='train')    
+    parser.add_argument('--mode', default='train')
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
