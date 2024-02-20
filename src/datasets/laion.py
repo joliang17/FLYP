@@ -48,8 +48,6 @@ class CsvDataset(Dataset):
                  return_img_id=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
-        if datalimit != -1:
-            df = df.sample(n=datalimit, replace=False, ignore_index=True) 
 
         # for sample experiment, only sample few samples from training data
         if return_img_id:
@@ -67,6 +65,8 @@ class CsvDataset(Dataset):
         # only loading guidance
         if guidance is not None:
             df = df[df['guidance'] == guidance]
+            if datalimit != -1:
+                df = df.sample(n=datalimit, replace=False, ignore_index=True) 
 
         ##########################
         # mixture from original data * image guidance
