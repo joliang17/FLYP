@@ -190,8 +190,10 @@ def init_guidance_setting(args,
     cur_guidance = None
     cur_guidance_id = 0
     len_data = None
+    loop_times = 1
     cur_str_times = 1
     list_guidance = None
+    num_batch_ori = None
 
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
@@ -519,6 +521,7 @@ def flyp_loss(args,
         #############################################
         # Find the best guidance for each img for current model
         if args.progress_train:
+            pdb.set_trace()
             logger.info(f"Progress evaluation on training data ...")
             dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
                                                              progress_ma=progress_ma)
