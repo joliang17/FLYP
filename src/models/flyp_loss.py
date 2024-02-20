@@ -27,7 +27,11 @@ import wandb
 import numpy as np
 
 
-def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
+def seq_curri_guid(list_guidance: List,
+                   cur_guidance_id=None,
+                   cur_str_times=None,
+                   ctype='out_curri',
+                   loop_times=1):
     # sequentially use guidance 
     if ctype == 'no_curri':
         # iteratively loop over all guidance
@@ -61,7 +65,13 @@ def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, list_classes=None, epoch=0,
+def load_data(logger,
+              args,
+              clip_encoder,
+              cur_guidance=None,
+              cur_str_times=1,
+              list_classes=None,
+              epoch=0,
               ori_proportion=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
@@ -71,9 +81,8 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
     # load dataloader
-    img_text_data = get_data(
-        args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0, guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion)
+    img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
+        guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -82,20 +91,25 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     return ft_dataloader
 
 
-def generate_class_head(model, args, epoch):
+def generate_class_head(model,
+                        args,
+                        epoch):
     # get classification head embedding
     args.current_epoch = epoch
-    classification_head_new = get_zeroshot_classifier(
-        args, model.module.model)
+    classification_head_new = get_zeroshot_classifier(args, model.module.model)
     classification_head_new = classification_head_new.cuda()
     return classification_head_new
 
 
-def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
+def progress_eval(model,
+                  args,
+                  last_perform,
+                  epoch,
+                  logger,
+                  progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new,
-                            Dict_cur_guidance, logger, progress_eval=True)
+    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True)
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
@@ -126,7 +140,53 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
     return res_progress, str_progress, last_perform, cur_stats
 
 
-def init_guidance_setting(args):
+def progress_eval_train(model,
+                        args,
+                        epoch,
+                        logger,
+                        progress_ma=None):
+    """
+    Evaluate the best guidance on training dataset for each image
+
+    :param model:
+    :param args:
+    :param epoch:
+    :param logger:
+    :param progress_ma:
+    :return:
+    """
+    classification_head_new = generate_class_head(model, args, epoch)
+
+    dict_guid_prob = {}
+    _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger, progress_train=True)
+
+    dict_best_guid = dict()
+    for img_id, list_guid_prob in dict_guid_prob.items():
+        # compute moving average of progress
+        if args.ma_progress and progress_ma is not None:
+            # adding current eval to ma list
+            progress_ma[img_id].extend(list_guid_prob)
+            # compute for average here
+            new_list_guid = progress_ma[img_id]
+            all_guid = set([item[0] for item in new_list_guid])
+            list_guid_prob_new = []
+            for guid_int in all_guid:
+                guid_probs = [item[1] for item in new_list_guid if item[0] == guid_int]
+                value = np.mean(np.array(guid_probs))
+                list_guid_prob_new.append([guid_int, value])
+
+            list_guid_prob = list_guid_prob_new
+
+        # find best guid for each image
+        list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
+        best_guid = list_guid_prob[0][0]
+        dict_best_guid[img_id] = best_guid
+
+    return dict_best_guid
+
+
+def init_guidance_setting(args,
+                          list_classes=None):
     cur_guidance = None
     cur_guidance_id = 0
     len_data = None
@@ -183,7 +243,10 @@ def init_guidance_setting(args):
     return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori
 
 
-def flyp_loss(args, clip_encoder, classification_head, logger):
+def flyp_loss(args,
+              clip_encoder,
+              classification_head,
+              logger):
     model_path = ''
 
     assert args.train_dataset is not None, "Please provide a training dataset."
@@ -195,8 +258,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     clip_encoder.process_images = True
     print_every = 100
 
-    log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
-        args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
+    log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(
+        args.lr) + "_run" + str(args.run)
     os.makedirs(log_dir, exist_ok=True)
 
     model = model.cuda()
@@ -266,7 +329,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args)
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args,
+                                                                                                              list_classes=list_classes)
 
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
                               list_classes=list_classes, epoch=0, ori_proportion=0.1)
@@ -283,11 +347,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     classification_head.train()
     model.train()
 
-    clip_loss_fn = ClipLoss(local_loss=False,
-                            gather_with_grad=False,
-                            cache_labels=True,
-                            rank=0,
-                            world_size=1,
+    clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1,
                             use_horovod=False)
 
     clip_params = list(model.parameters())
@@ -296,11 +356,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
 
     if args.scheduler in ('default', 'drestart'):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                              (args.epochs - start_epoch) * num_batches, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs - start_epoch) * num_batches,
+                              args.min_lr)
     elif args.scheduler in ('default_slower',):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                              (args.epochs - start_epoch) * num_batches * 2, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs - start_epoch) * num_batches * 2,
+                              args.min_lr)
     elif args.scheduler in ('crestart',):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1,
                                                                          eta_min=0.01, last_epoch=-1)
@@ -343,7 +403,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         if not args.test:
             for i in trange(num_batches):
-                start_time = time.time()
                 step = i + epoch * num_batches
                 optimizer.zero_grad()
 
@@ -392,8 +451,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 cur_str_times = 0
 
                             if args.proportion:
-                                ori_proportion = 1 / args.curriculum_epoch * epoch
-                                # cur_str_times = loop_times
+                                ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
 
                         # ori_proportion
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
@@ -406,11 +464,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_image, ft_text = ft_batch
                 ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
-                ft_image_features, ft_text_features, logit_scale2 = model(
-                    ft_image, ft_text)
-                ft_clip_loss = clip_loss_fn(ft_image_features,
-                                            ft_text_features,
-                                            logit_scale2)
+                ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
+                ft_clip_loss = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
                 ft_clip_loss.backward()
                 optimizer.step()
@@ -435,9 +490,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                 if i % print_every == 0:
                     percent_complete = 100 * i / num_batches
-                    logger.info(
-                        f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
-                        f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
+                    logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
+                                f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
                 if args.ma_progress and (num_batches - i) % 100 == 0:
                     logger.info(f"Running progress evaluation for moving average with i={i}")
@@ -456,16 +510,23 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.save is not None and not args.ma_progress:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
-            torch.save({
-                'epoch': epoch,
-                'cur_guidance': cur_guidance,
-                'cur_str_times': cur_str_times,
-                'cur_guidance_id': cur_guidance_id,
-                'model_state_dict': model.module.state_dict(),
-            }, model_path)
+            torch.save({'epoch': epoch, 'cur_guidance': cur_guidance, 'cur_str_times': cur_str_times,
+                'cur_guidance_id': cur_guidance_id, 'model_state_dict': model.module.state_dict(), }, model_path)
             # optimizer_path = os.path.join(args.save, f'optimizer_{epoch}.pt')
             # torch.save({'optimizer_state_dict': optimizer.state_dict(),}, optimizer_path)
             logger.info('Saving model to' + str(model_path))
+
+        #############################################
+        # Find the best guidance for each img for current model
+        if args.progress_train:
+            logger.info(f"Progress evaluation on training data ...")
+            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+                                                             progress_ma=progress_ma)
+            dict_best_guid['Epoch'] = epoch
+
+            # save progress_ma:
+            with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
+                pickle.dump(dict_best_guid, f)
 
         #############################################
         # Evaluate progress on different group of cur_guidance for this epoch
@@ -488,8 +549,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Evaluate
         logger.info(f"Formal evaluation ...")
         classification_head_new = generate_class_head(model, args, epoch)
-        eval_results = evaluate(model, args, classification_head_new,
-                                epoch_stats, logger)
+        eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger)
 
         ood_acc = 0
         num_datasets = 0

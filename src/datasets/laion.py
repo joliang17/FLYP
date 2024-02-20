@@ -24,7 +24,6 @@ from webdataset.tariterators import base_plus_ext, url_opener, tar_file_expander
 import pdb
 import pickle
 
-
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -44,22 +43,33 @@ class CsvDataset(Dataset):
                  guidance=None,
                  list_selection=None,
                  ori_proportion=None,
-                 return_guidance=False):
+                 return_guidance=False,
+                 return_img_id=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
-        
+
+        # TODO: for sample experiment, only sample few samples from training data
+        if return_img_id:
+            # sort the df by img_id
+            df = df[df['img_id'] != -1]
+            df = df.sample(n=10000, replace=False, ignore_index=True)  # TODO: remove this line
+            df = df.sort_values(by='img_id', )
+
         ##########################
         # mixture from original data * image guidance
-        # TODO:
         if ori_proportion is not None:
-            df_ori = df[df['guidance']==100]
+            df_ori = df[df['guidance'] == 100]
 
+        ##########################
+        # only loading guidance
         if guidance is not None:
-            df = df[df['guidance']==guidance]
+            df = df[df['guidance'] == guidance]
 
+        ##########################
+        # mixture from original data * image guidance
         if ori_proportion is not None:
             num_df = len(df)
-            num_ori = min(len(df_ori), int(num_df/(1-ori_proportion) * ori_proportion))
+            num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
             logging.info(f'Loading csv data from {input_filename}.')
@@ -74,12 +84,17 @@ class CsvDataset(Dataset):
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
-        num_columns = len(df.columns) - 4
+        title_col = [item for item in df.columns if caption_key in item]
+        num_columns = len(title_col)
 
         self.return_guidance = return_guidance
         if self.return_guidance:
             self.guidance = df['guidance'].tolist()
             self.img_trans = T.ToPILImage()
+
+        self.return_img_id = return_img_id
+        if self.return_img_id:
+            self.img_id = df['img_id'].tolist()
 
         self.captions_list = []
         for k in range(1, num_columns):
@@ -107,11 +122,12 @@ class CsvDataset(Dataset):
                 images = self.img_trans(images)
         else:
             images = Image.open(img_path)
-            
+
         images = self.transforms(images)
 
         texts = tokenize([str(self.captions[idx])])[0]
 
+        return_label = [images, texts, ]
         if len(self.captions_list) > 0:
             texts_list = [
                 tokenize([str(self.captions_list[i][idx])])[0]
@@ -120,40 +136,35 @@ class CsvDataset(Dataset):
             texts_list.append(texts)
             texts_list = torch.stack(texts_list, dim=0)
             perm = torch.randperm(texts_list.shape[0])
-
             texts_list = texts_list[perm, :]
 
-        if self.return_guidance:
-            guidance = self.guidance[idx]
-            
+            return_label.append(texts_list)
+
         if self.return_label:
             label = self.labels[idx]
             f_path = self.img_path[idx]
-            if len(self.captions_list) > 0:
-                return images, texts, texts_list, label, f_path
-            else:
-                if self.return_guidance:
-                    return images, texts, label, f_path, guidance
-                else:
-                    return images, texts, label, f_path, 
 
-        if len(self.captions_list) > 0:
-            if self.return_guidance:
-                return images, texts, texts_list, guidance
-            else:
-                return images, texts, texts_list
+            return_label.append(label)
+            return_label.append(f_path)
 
         if self.return_guidance:
-            return images, texts, guidance
-        else:
-            return images, texts
+            guidance = self.guidance[idx]
+            return_label.append(guidance)
+
+        if self.return_img_id:
+            img_id = self.img_id[idx]
+            return_label.append(img_id)
+
+        return return_label
 
 
 class SharedEpoch:
-    def __init__(self, epoch: int = 0):
+    def __init__(self,
+                 epoch: int = 0):
         self.shared_epoch = Value('i', epoch)
 
-    def set_value(self, epoch):
+    def set_value(self,
+                  epoch):
         self.shared_epoch.value = epoch
 
     def get_value(self):
@@ -166,7 +177,8 @@ class DataInfo:
     sampler: DistributedSampler = None
     shared_epoch: SharedEpoch = None
 
-    def set_epoch(self, epoch):
+    def set_epoch(self,
+                  epoch):
         if self.shared_epoch is not None:
             self.shared_epoch.set_value(epoch)
         if self.sampler is not None and isinstance(self.sampler,
@@ -201,7 +213,9 @@ def get_dataset_size(shards):
     return total_size, num_shards
 
 
-def get_imagenet(args, preprocess_fns, split):
+def get_imagenet(args,
+                 preprocess_fns,
+                 split):
     assert split in ["train", "val", "v2"]
     is_train = split == "train"
     preprocess_train, preprocess_val = preprocess_fns
@@ -291,7 +305,7 @@ def group_by_keys_nothrow(data,
         #  this happening in the current LAION400m dataset if a tar ends with same prefix as the next
         #  begins, rare, but can happen since prefix aren't unique across tar files in that dataset
         if current_sample is None or prefix != current_sample[
-                "__key__"] or suffix in current_sample:
+            "__key__"] or suffix in current_sample:
             if valid_sample(current_sample):
                 yield current_sample
             current_sample = dict(__key__=prefix,
@@ -302,7 +316,8 @@ def group_by_keys_nothrow(data,
         yield current_sample
 
 
-def tarfile_to_samples_nothrow(src, handler=log_and_continue):
+def tarfile_to_samples_nothrow(src,
+                               handler=log_and_continue):
     # NOTE this is a re-impl of the webdataset impl with group_by_keys that doesn't throw
     streams = url_opener(src, handler=handler)
     files = tar_file_expander(streams, handler=handler)
@@ -328,18 +343,19 @@ _SAMPLE_SHUFFLE_INITIAL = 1000
 
 class detshuffle2(wds.PipelineStage):
     def __init__(
-        self,
-        bufsize=1000,
-        initial=100,
-        seed=0,
-        epoch=-1,
+            self,
+            bufsize=1000,
+            initial=100,
+            seed=0,
+            epoch=-1,
     ):
         self.bufsize = bufsize
         self.initial = initial
         self.seed = seed
         self.epoch = epoch
 
-    def run(self, src):
+    def run(self,
+            src):
         if isinstance(self.epoch, SharedEpoch):
             epoch = self.epoch.get_value()
         else:
@@ -358,13 +374,14 @@ class detshuffle2(wds.PipelineStage):
 
 class ResampledShards2(IterableDataset):
     """An iterable dataset yielding a list of urls."""
+
     def __init__(
-        self,
-        urls,
-        nshards=sys.maxsize,
-        worker_seed=None,
-        deterministic=False,
-        epoch=-1,
+            self,
+            urls,
+            nshards=sys.maxsize,
+            worker_seed=None,
+            deterministic=False,
+            epoch=-1,
     ):
         """Sample shards from the shard list with replacement.
 
@@ -396,8 +413,12 @@ class ResampledShards2(IterableDataset):
             yield dict(url=self.rng.choice(self.urls))
 
 
-def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
-    input_shards = args.replay_data  #if is_train else args.val_data
+def get_wds_dataset(args,
+                    preprocess_img,
+                    is_train,
+                    epoch=0,
+                    floor=False):
+    input_shards = args.replay_data  # if is_train else args.val_data
     assert input_shards is not None
     resampled = getattr(args, 'dataset_resampled', False) and is_train
 
@@ -516,7 +537,16 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, return_guidance=False, ori_proportion=None):
+def get_csv_dataset(args,
+                    preprocess_fn,
+                    is_train,
+                    epoch=0,
+                    guidance=None,
+                    list_selection=None,
+                    return_guidance=False,
+                    ori_proportion=None,
+                    return_img_id=False):
+    # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
@@ -534,11 +564,12 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
                          img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key,
                          sep=args.csv_separator,
-                         label_key=label_key, 
-                         guidance=guidance, 
+                         label_key=label_key,
+                         guidance=guidance,
                          list_selection=list_selection,
-                         return_guidance=return_guidance, 
-                         ori_proportion=ori_proportion,)
+                         return_guidance=return_guidance,
+                         return_img_id=return_img_id,
+                         ori_proportion=ori_proportion, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -560,7 +591,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     return DataInfo(dataloader, sampler)
 
 
-def get_dataset_fn(data_path, dataset_type):
+def get_dataset_fn(data_path,
+                   dataset_type):
     if dataset_type == "webdataset":
         return get_wds_dataset
     elif dataset_type == "csv":
@@ -579,7 +611,12 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None):
+def get_data(args,
+             preprocess_fns,
+             epoch=0,
+             guidance=None,
+             list_selection=None,
+             ori_proportion=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -587,8 +624,8 @@ def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, 
                                       args.dataset_type)(args,
                                                          preprocess_train,
                                                          is_train=True,
-                                                         epoch=epoch, 
+                                                         epoch=epoch,
                                                          guidance=guidance, list_selection=list_selection,
-                                                         ori_proportion=ori_proportion,)
+                                                         ori_proportion=ori_proportion, )
 
     return data

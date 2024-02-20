@@ -26,10 +26,56 @@ def process_train_stat(results, train_stats, logger, dataset_name=''):
         if ('worst' in key or 'f1' in key.lower() or 'pm0' in key) and 'guidance' not in key.lower():
             logging_input(f"{dataset_name} {key}: {val:.4f}", logger)
             train_stats[dataset_name + key] = round(val, 4)
-    return 
+    return
 
 
-def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False):
+def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
+    model = image_classifier
+    input_key = 'images'
+
+    model.eval()
+    classification_head.eval()
+
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
+                                 return_guidance=True, return_img_id=True).dataloader
+
+    batched_data = enumerate(dataloader)
+    device = args.device
+
+    dict_preds = dict()  # save predict value of currect class for each image with different strength
+
+    with torch.no_grad():
+        for i, data in batched_data:
+            data = maybe_dictionarize(data, progress_train=True)
+            x = data[input_key].to(device)
+            y = data['labels'].to(device)
+            guidances = data['guidance'].to(device)
+            img_ids = data['img_id'].to(device)
+
+            logits = utils.get_logits(x, model, classification_head)
+
+            # TODO: find the largest prob of y
+            prob = logits[:, y].to(device)
+            for i, img_id_t in enumerate(img_ids):
+                img_id = img_id_t.cpu().clone().detach().items()
+                cur_prob = prob[i, 0].cpu().clone().detach().item()
+                cur_guid = guidances[i].cpu().clone().detach().item()
+                if img_id not in dict_preds:
+                    dict_preds[img_id] = []
+                dict_preds[img_id].append([cur_guid, cur_prob])
+
+    metrics = {}
+    # dict_best_guid = dict()
+    # for img_id,list_guid_prob in dict_preds.items():
+    #     list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
+    #     best_guid = list_guid_prob[0][0]
+    #     dict_best_guid[img_id] = best_guid
+
+    metrics['best_guid'] = dict_preds
+    return metrics
+
+
+def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False, ):
 
     model = image_classifier
     input_key = 'images'
@@ -273,10 +319,21 @@ def evaluate(image_classifier,
              classification_head,
              train_stats={},
              logger=None, 
-             progress_eval=False):
+             progress_eval=False,
+             progress_train=False):
     if args.eval_datasets is None:
         return
     info = vars(args)
+
+    if progress_train:
+        # Evaluate the best guidance on training dataset for each image
+        logging_input(f"Evaluating on training dataset", logger)
+        results = eval_single_dataset_onTrain(image_classifier, args,
+                                        classification_head, )
+
+        train_stats[f"Best Guid per Image"] = results
+        return info
+
     if progress_eval:
         # load specific curriculum data and evaluate performance on group of guidance
         logging_input(f"Evaluating on curriculum evaluation dataset", logger)
