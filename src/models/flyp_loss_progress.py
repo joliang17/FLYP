@@ -32,6 +32,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     def train_model_basedon_guid(guid, cur_step):
         cur_str_times = 1
         id_flyp_loss_sum = 0
+        # pdb.set_trace()
         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=guid)
         ft_iterator = iter(ft_dataloader)
         num_batches = len(ft_dataloader)
@@ -150,7 +151,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance = init_guidance_setting(args)
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args)
 
     classification_head.train()
     model.train()
@@ -202,6 +203,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
             # # 2. eval progress of different guidance based on this last model
             res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=-1, logger=logger)
+            # pdb.set_trace()
             list_progress = [(guid, value) for guid, value in res_progress.items()]
             list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
 
@@ -223,7 +225,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 logger.info(f'start step: {str(step)}')
 
                 # load guidance data
-                guid_int = 100 - guid_pair[0]
+                guid_int = guid_pair[0]
                 progress = guid_pair[1]
                 
                 cur_guid_path = copy.deepcopy(last_guid_path)

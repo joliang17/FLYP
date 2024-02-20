@@ -77,6 +77,8 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
+    if not args.debug:
+        wandb.log({"Epoch": epoch, "Cur Dataloader Batch": len(ft_dataloader)})
     return ft_dataloader
 
 
@@ -177,7 +179,7 @@ def init_guidance_setting(args):
         cur_guidance_id = 0
         cur_guidance= args.guidance
 
-    return cur_guidance_id, cur_guidance, list_guidance
+    return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
     model_path = ''
@@ -264,7 +266,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance = init_guidance_setting(args)
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args)
 
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0, ori_proportion=0.1)
     ft_iterator = iter(ft_dataloader)
@@ -324,7 +326,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         logger.info(f"Epoch : {epoch}")
         epoch_stats = {}
-        epoch_stats['epoch'] = epoch
+        epoch_stats['Epoch'] = epoch
 
         progress_ma = dict()
 
@@ -378,8 +380,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                             if args.proportion:
                                 ori_proportion = 1 / args.curriculum_epoch * epoch
+                                cur_str_times = loop_times
 
-                        # TODO: ori_proportion
+                        # ori_proportion
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=ori_proportion)
 
                     ft_iterator = iter(ft_dataloader)
@@ -455,7 +458,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             logger.info(f"Progress evaluation ...")
             _, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger, progress_ma=progress_ma)
 
-            str_progress['epoch'] = epoch
+            str_progress['Epoch'] = epoch
             df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
             df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
             

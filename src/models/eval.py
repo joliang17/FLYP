@@ -184,8 +184,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             cur_str_preds = torch.cat(cur_str_preds)
             cur_str_preds = torch.squeeze(cur_str_preds)
             f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
-            dict_guidance[guid_i] = f1_cur_str.item()
-        metrics['guidance_f1'] = dict_guidance
+            dict_guidance_f1[guid_i] = f1_cur_str.item()
+        metrics['guidance_f1'] = dict_guidance_f1
 
     if 'top1' not in metrics:
         metrics['top1'] = top1
