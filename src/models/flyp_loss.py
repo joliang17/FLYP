@@ -391,7 +391,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                             if args.proportion:
                                 ori_proportion = 1 / args.curriculum_epoch * epoch
-                                cur_str_times = loop_times
+                                # cur_str_times = loop_times
 
                         # ori_proportion
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
