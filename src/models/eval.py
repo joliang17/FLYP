@@ -54,12 +54,13 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
 
             logits = utils.get_logits(x, model, classification_head)
 
-            # TODO: find the largest prob of y
-            prob = logits[:, y].to(device)
+            # find the largest prob of y
+            all_prob = F.softmax(logits, dim=-1)
             for i, img_id_t in enumerate(img_ids):
-                img_id = img_id_t.cpu().clone().detach().items()
-                cur_prob = prob[i, 0].cpu().clone().detach().item()
-                cur_guid = guidances[i].cpu().clone().detach().item()
+                img_id = img_id_t.item()
+                cur_label = y[i].item()
+                cur_prob = all_prob[i, cur_label].item()
+                cur_guid = guidances[i].item()
                 if img_id not in dict_preds:
                     dict_preds[img_id] = []
                 dict_preds[img_id].append([cur_guid, cur_prob])
@@ -331,7 +332,7 @@ def evaluate(image_classifier,
         results = eval_single_dataset_onTrain(image_classifier, args,
                                         classification_head, )
 
-        train_stats[f"Best Guid per Image"] = results
+        train_stats[f"Best Guid per Image"] = results['best_guid']
         return info
 
     if progress_eval:

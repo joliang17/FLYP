@@ -41,18 +41,21 @@ class CsvDataset(Dataset):
                  sep="\t",
                  label_key=None,
                  guidance=None,
+                 datalimit=-1,
                  list_selection=None,
                  ori_proportion=None,
                  return_guidance=False,
                  return_img_id=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
+        if datalimit != -1:
+            df = df.sample(n=datalimit, replace=False, ignore_index=True) 
 
-        # TODO: for sample experiment, only sample few samples from training data
+        # for sample experiment, only sample few samples from training data
         if return_img_id:
             # sort the df by img_id
             df = df[df['img_id'] != -1]
-            df = df.sample(n=10000, replace=False, ignore_index=True)  # TODO: remove this line
+            # df = df.sample(n=10000, replace=False, ignore_index=True) 
             df = df.sort_values(by='img_id', )
 
         ##########################
@@ -566,6 +569,7 @@ def get_csv_dataset(args,
                          sep=args.csv_separator,
                          label_key=label_key,
                          guidance=guidance,
+                         datalimit=args.datalimit, 
                          list_selection=list_selection,
                          return_guidance=return_guidance,
                          return_img_id=return_img_id,

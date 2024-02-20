@@ -161,7 +161,7 @@ def progress_eval_train(model,
     _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger, progress_train=True)
 
     dict_best_guid = dict()
-    for img_id, list_guid_prob in dict_guid_prob.items():
+    for img_id, list_guid_prob in dict_guid_prob['Best Guid per Image'].items():
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
             # adding current eval to ma list
@@ -185,8 +185,8 @@ def progress_eval_train(model,
     return dict_best_guid
 
 
-def init_guidance_setting(args,
-                          list_classes=None):
+def init_guidance_setting(args, logger,
+                          list_classes=None, ):
     cur_guidance = None
     cur_guidance_id = 0
     len_data = None
@@ -331,11 +331,15 @@ def flyp_loss(args,
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args,
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args, logger,
                                                                                                               list_classes=list_classes)
 
+    ori_proportion = None
+    if args.proportion: 
+        ori_proportion = 0.1
+        
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                              list_classes=list_classes, epoch=0, ori_proportion=0.1)
+                              list_classes=list_classes, epoch=0, ori_proportion=ori_proportion)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -521,7 +525,6 @@ def flyp_loss(args,
         #############################################
         # Find the best guidance for each img for current model
         if args.progress_train:
-            pdb.set_trace()
             logger.info(f"Progress evaluation on training data ...")
             dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
                                                              progress_ma=progress_ma)
@@ -530,6 +533,8 @@ def flyp_loss(args,
             # save progress_ma:
             with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
                 pickle.dump(dict_best_guid, f)
+
+            # pdb.set_trace()
 
         #############################################
         # Evaluate progress on different group of cur_guidance for this epoch
