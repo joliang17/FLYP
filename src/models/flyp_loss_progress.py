@@ -75,7 +75,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 res_progress["Epoch"] = epoch
                 res_progress["Trained_guid"] = guid
                 # wandb.log(res_progress)
-                
+
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
         return cur_step, id_flyp_loss_avg
 
@@ -93,7 +93,6 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         last_perform = checkpoint['last_progress']
         step = checkpoint['step']
         return last_perform, step
-         
 
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
@@ -116,7 +115,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
+                                  f'checkpoint_15.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint)
@@ -125,7 +125,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     # Data initialization
     list_classes = None
     if args.cont_finetune:
-        df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv', delimiter='\t')
+        df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv',
+                             delimiter='\t')
         df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
         # df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] <= 50)]
         list_classes = df_filter['Unnamed: 0'].values.tolist()
@@ -133,15 +134,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         if 0 not in list_classes:
             list_classes.append(0)
         logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
-    
-    cur_guidance = None
-    cur_guidance_id = 0
-    len_data = None
-    cur_str_times = 1
-    start_epoch = 0
 
-    dataset_class = getattr(datasets, args.train_dataset)
-    logger.info(f"Training dataset {args.train_dataset}")
+    start_epoch = 0
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
@@ -151,7 +145,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args)
+    # cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args)
 
     classification_head.train()
     model.train()
@@ -170,7 +164,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                            (args.epochs - start_epoch) * 1000, args.min_lr)
+                              (args.epochs - start_epoch) * 1000, args.min_lr)
     else:
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
@@ -182,7 +176,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     # 0. save the current start model
     os.makedirs(args.save, exist_ok=True)
     model_path = os.path.join(args.save, f'cur_point{epoch}_guidpath-1.pt')
-    torch.save({'model_state_dict': model.module.state_dict(), 'last_progress': last_perform, 'optimizer_state_dict': optimizer.state_dict(), 'step': 0}, model_path)
+    torch.save({'model_state_dict': model.module.state_dict(), 'last_progress': last_perform,
+                'optimizer_state_dict': optimizer.state_dict(), 'step': 0}, model_path)
     logger.info('Saving model to' + str(model_path))
 
     stats = []
@@ -198,11 +193,12 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
             last_guid_path_str = last_model_name.split('guidpath')[1]
             last_guid_path = last_guid_path_str.split('=')
             last_guid_path = list(map(int, last_guid_path))  # transform to int
-            
+
             last_perform, step = loading_model(last_model_path)
 
             # # 2. eval progress of different guidance based on this last model
-            res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=-1, logger=logger)
+            res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=-1,
+                                                                        logger=logger)
             # pdb.set_trace()
             list_progress = [(guid, value) for guid, value in res_progress.items()]
             list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
@@ -227,7 +223,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 # load guidance data
                 guid_int = guid_pair[0]
                 progress = guid_pair[1]
-                
+
                 cur_guid_path = copy.deepcopy(last_guid_path)
                 cur_guid_path.append(guid_int)
                 cur_guid_path_str = "=".join(list(map(str, cur_guid_path)))
@@ -237,10 +233,11 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 step, id_flyp_loss_avg = train_model_basedon_guid(guid_int, step)
                 # pdb.set_trace()
                 logger.info(f'end step: {step}')
-                
+
                 # 4. eval the trained model on the guidance dataset / wildcamp dataset
                 # guidance dataset
-                res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=epoch, logger=logger)
+                res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=epoch,
+                                                                            logger=logger)
                 res_progress["Epoch"] = epoch
                 res_progress["Trained_guid"] = guid_int
                 # wandb.log(res_progress)
@@ -259,7 +256,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 for k, v in epoch_stats.items():
                     if 'Accuracy' in k and 'Class' not in k:
                         if k == 'ImageNet Accuracy':
-                            #ignore the ID acc term
+                            # ignore the ID acc term
                             continue
                         ood_acc += v
                         num_datasets += 1
@@ -267,15 +264,17 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                     ood_acc = ood_acc / num_datasets
                 else:
                     ood_acc = 0
-                
+
                 epoch_stats['Trained_guid'] = guid_int
                 epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
                 logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
                 logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
                 epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
                 epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-                
-                list_model_performance.append([epoch, guid_int, last_perform, cur_guid_path_str, step, epoch_stats['IWildCamOODF1-macro_all'], model.module.state_dict(), ])
+
+                list_model_performance.append(
+                    [epoch, guid_int, last_perform, cur_guid_path_str, step, epoch_stats['IWildCamOODF1-macro_all'],
+                     model.module.state_dict(), ])
 
                 stats.append(epoch_stats)
                 stats_df = pd.DataFrame(stats)
@@ -289,13 +288,11 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         list_last = []
         for model_para in list_model_performance:
             model_path = os.path.join(args.save, f'cur_point{epoch}_guidpath{model_para[3]}.pt')
-            torch.save({'model_state_dict': model_para[-1], 'last_progress': model_para[2], 'optimizer_state_dict': optimizer.state_dict(), 'step': model_para[4]}, model_path)
+            torch.save({'model_state_dict': model_para[-1], 'last_progress': model_para[2],
+                        'optimizer_state_dict': optimizer.state_dict(), 'step': model_para[4]}, model_path)
             logger.info('Saving model to' + str(model_path))
             list_last.append(model_path)
         logger.info(f"Saved top-5 model: {list_last}")
 
     os.system('wandb sync')
     exit(0)
-
-    os.system('wandb sync')
-    
