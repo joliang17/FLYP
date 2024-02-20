@@ -117,7 +117,7 @@ def main(args):
         # for curriculum progress evaluation
 
         clip_path = '../data/metadata/clip_score_curriculum.pkl'
-        threshold = 0.23
+        threshold = 0.25
         Dict_filt = filter_img(clip_path, threshold)
 
         data_path = "../data/test_new"
@@ -127,6 +127,7 @@ def main(args):
         for cur_sp_f in tqdm(img_sp_folder_curri):
             cur_sp_path = os.path.join(data_path, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
+            cur_sp_name_under = cur_sp_name.replace(' ', '_')
             new_saved_path = os.path.join(cur_sp_path, 'new_saved')
             os.makedirs(new_saved_path, exist_ok=True)
 
@@ -148,7 +149,7 @@ def main(args):
                     new_path = new_saved_path + f'/{img_id}_{cate}.pkl'
 
                     if len(Dict_filt) > 0:
-                        if cate in Dict_filt and cur_sp_name in Dict_filt[cate] and img_id in Dict_filt[cate][cur_sp_f]:
+                        if cate in Dict_filt and cur_sp_name_under in Dict_filt[cate] and img_id in Dict_filt[cate][cur_sp_name_under]:
                             with open(new_path, 'wb') as f:
                                 pickle.dump(pair[1], f)
                             list_result.append([cur_y, new_path, cur_strength])
@@ -177,6 +178,7 @@ def main(args):
                 list_result.append([cur_y, cur_img_path, cur_strength])
 
     df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength'])
+    df.loc[:, 'guidance'] = df['strength'].apply(lambda x: 100-int(x))
     
     if args.random:
         print(len(df))
@@ -218,14 +220,14 @@ def main(args):
                    on='y').rename({'prompt1': 'title'}, axis='columns')
     df2 = pd.merge(df, label_to_name[['y', 'prompt2']],
                    on='y').rename({'prompt2': 'title'}, axis='columns')
-    df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength']]
+    df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance']]
 
     del df1
     del df2
     del df
 
     df_final = df_final.rename({'filename': 'filepath','y': 'label'},
-                               axis='columns')[['title', 'filepath', 'label', 'strength']]
+                               axis='columns')[['title', 'filepath', 'label', 'strength', 'guidance']]
 
     df_final.to_csv(os.path.join(args.save_folder, f'{args.mode}.csv'), sep='\t', index=False, header=True)
 
