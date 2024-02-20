@@ -23,7 +23,7 @@ def logging_input(curinput='', logger=None):
 
 def process_train_stat(results, train_stats, logger, dataset_name=''):
     for key, val in results.items():
-        if ('worst' in key or 'f1' in key.lower() or 'pm0' in key) and 'strength' not in key.lower():
+        if ('worst' in key or 'f1' in key.lower() or 'pm0' in key) and 'guidance' not in key.lower():
             logging_input(f"{dataset_name} {key}: {val:.4f}", logger)
             train_stats[dataset_name + key] = round(val, 4)
     return 
@@ -39,7 +39,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     classification_head.eval()
 
     if progress_eval:
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_strength=True).dataloader
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True).dataloader
         # num_classes = dataloader.num_classes
 
     elif not args.self_data:
@@ -73,13 +73,13 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
         dict_class = dict()
-        dict_strength = dict()
+        dict_guidance = dict()
         for i, data in batched_data:
             data = maybe_dictionarize(data, progress_eval=progress_eval)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
-            if progress_eval and 'strength' in data:
-                strength = data['strength']
+            if progress_eval and 'guidance' in data:
+                guidance = data['guidance']
 
             if 'image_paths' in data:
                 image_paths = data['image_paths']
@@ -126,26 +126,26 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_class[cls_i][1] += cur_num
                 
                 if progress_eval:
-                    strengthes = torch.unique(strength)
-                    for str_i in strengthes:
-                        str_i = str_i.item()
-                        sap_ids = (strength == str_i).nonzero(as_tuple=True)
+                    guidances = torch.unique(guidance)
+                    for guid_i in guidances:
+                        guid_i = guid_i.item()
+                        sap_ids = (guidance == guid_i).nonzero(as_tuple=True)
                         cur_pred = pred[sap_ids]
                         cur_y = y[sap_ids]
 
                         cur_correct = cur_pred.eq(cur_y.view_as(cur_pred)).sum().item()
                         cur_num = len(sap_ids[0])
-                        if str_i not in dict_strength:
-                            dict_strength[str_i] = [0, 0]
+                        if guid_i not in dict_guidance:
+                            dict_guidance[guid_i] = [0, 0]
                         
-                        dict_strength[str_i][0] += cur_correct
-                        dict_strength[str_i][1] += cur_num
+                        dict_guidance[guid_i][0] += cur_correct
+                        dict_guidance[guid_i][1] += cur_num
 
-                        if str_i not in dict_labels:
-                            dict_labels[str_i] = []
-                            dict_preds[str_i] = []
-                        dict_labels[str_i].append(cur_y.cpu().clone().detach())
-                        dict_preds[str_i].append(cur_pred.cpu().clone().detach())
+                        if guid_i not in dict_labels:
+                            dict_labels[guid_i] = []
+                            dict_preds[guid_i] = []
+                        dict_labels[guid_i].append(cur_y.cpu().clone().detach())
+                        dict_preds[guid_i].append(cur_pred.cpu().clone().detach())
 
             if args.self_data or hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -175,18 +175,17 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             metrics = {}
     
     if progress_eval:
-        dict_strength_f1 = dict()
-        for str_i in dict_labels.keys():
-            cur_str_labels = dict_labels[str_i]
-            cur_str_preds = dict_preds[str_i]
+        dict_guidance_f1 = dict()
+        for guid_i in dict_labels.keys():
+            cur_str_labels = dict_labels[guid_i]
+            cur_str_preds = dict_preds[guid_i]
             # pdb.set_trace()
             cur_str_labels = torch.cat(cur_str_labels)
-            # cur_str_labels = torch.squeeze(cur_str_labels)
             cur_str_preds = torch.cat(cur_str_preds)
             cur_str_preds = torch.squeeze(cur_str_preds)
             f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
-            dict_strength_f1[str_i] = f1_cur_str.item()
-        metrics['strength_f1'] = dict_strength_f1
+            dict_guidance[guid_i] = f1_cur_str.item()
+        metrics['guidance_f1'] = dict_guidance
 
     if 'top1' not in metrics:
         metrics['top1'] = top1
@@ -194,8 +193,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if len(dict_class) > 0:
         metrics['class_top1'] = dict_class
 
-    if len(dict_strength) > 0:
-        metrics['strength_top1'] = dict_strength
+    if len(dict_guidance) > 0:
+        metrics['guidance_top1'] = dict_guidance
 
     return metrics
 
@@ -279,28 +278,28 @@ def evaluate(image_classifier,
         return
     info = vars(args)
     if progress_eval:
-        # load specific curriculum data and evaluate performance on group of strength
+        # load specific curriculum data and evaluate performance on group of guidance
         logging_input(f"Evaluating on curriculum evaluation dataset", logger)
         dataset = None
         results = eval_single_dataset(image_classifier, dataset, args,
                                         classification_head, progress_eval=True)
-        if 'strength_f1' in results:
-            dict_strength_f1 = results['strength_f1']
-            list_acc = [[key, value] for key, value in dict_strength_f1.items()]
+        if 'guidance_f1' in results:
+            dict_guidance_f1 = results['guidance_f1']
+            list_acc = [[key, value] for key, value in dict_guidance_f1.items()]
 
             for pair in list_acc:
-                logging_input(f"Strength F1: {pair[0]} {pair[1]:.4f}", logger)
-                train_stats[f"Strength {pair[0]} F1"] = round(pair[1], 4)
+                logging_input(f"Guidance F1: {pair[0]} {pair[1]:.4f}", logger)
+                train_stats[f"Guidance {pair[0]} F1"] = round(pair[1], 4)
 
-        if 'strength_top1' in results:
+        if 'guidance_top1' in results:
             # pdb.set_trace()
 
-            list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['strength_top1'].items()]
+            list_acc = [[key, value[0]/value[1], value[1]] for key, value in results['guidance_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:
-                logging_input(f"Strength Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
-                train_stats[f"Strength {pair[0]} Accuracy"] = round(pair[1], 4)
-                train_stats[f"Strength {pair[0]} Number"] = pair[2]
+                logging_input(f"Guidance Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
+                train_stats[f"Guidance {pair[0]} Accuracy"] = round(pair[1], 4)
+                train_stats[f"Guidance {pair[0]} Number"] = pair[2]
 
         process_train_stat(results, train_stats, logger)
 

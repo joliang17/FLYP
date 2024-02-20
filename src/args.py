@@ -278,7 +278,7 @@ def parse_arguments():
         help="wandb group for expr results",
     )
 
-    parser.add_argument("--strength",
+    parser.add_argument("--guidance",
                         type=int,
                         default=-1,
                         help="Number of dataloader workers per GPU.")

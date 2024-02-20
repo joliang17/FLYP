@@ -41,10 +41,10 @@ class CsvDataset(Dataset):
                  caption_key,
                  sep="\t",
                  label_key=None,
-                 strength=None,
+                 guidance=None,
                  list_selection=None,
                  ori_proportion=None,
-                 return_strength=False):
+                 return_guidance=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
         
@@ -52,10 +52,10 @@ class CsvDataset(Dataset):
         # mixture from original data * image guidance
         # TODO:
         if ori_proportion is not None:
-            df_ori = df[df['strength']==0]
+            df_ori = df[df['guidance']==100]
 
-        if strength is not None:
-            df = df[df['strength']==strength]
+        if guidance is not None:
+            df = df[df['guidance']==guidance]
 
         if ori_proportion is not None:
             num_df = len(df)
@@ -74,11 +74,11 @@ class CsvDataset(Dataset):
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
-        num_columns = len(df.columns) - 3
+        num_columns = len(df.columns) - 4
 
-        self.return_strength = return_strength
-        if self.return_strength:
-            self.strength = df['strength'].tolist()
+        self.return_guidance = return_guidance
+        if self.return_guidance:
+            self.guidance = df['guidance'].tolist()
             self.img_trans = T.ToPILImage()
 
         self.captions_list = []
@@ -123,8 +123,8 @@ class CsvDataset(Dataset):
 
             texts_list = texts_list[perm, :]
 
-        if self.return_strength:
-            strength = self.strength[idx]
+        if self.return_guidance:
+            guidance = self.guidance[idx]
             
         if self.return_label:
             label = self.labels[idx]
@@ -132,19 +132,19 @@ class CsvDataset(Dataset):
             if len(self.captions_list) > 0:
                 return images, texts, texts_list, label, f_path
             else:
-                if self.return_strength:
-                    return images, texts, label, f_path, strength
+                if self.return_guidance:
+                    return images, texts, label, f_path, guidance
                 else:
                     return images, texts, label, f_path, 
 
         if len(self.captions_list) > 0:
-            if self.return_strength:
-                return images, texts, texts_list, strength
+            if self.return_guidance:
+                return images, texts, texts_list, guidance
             else:
                 return images, texts, texts_list
 
-        if self.return_strength:
-            return images, texts, strength
+        if self.return_guidance:
+            return images, texts, guidance
         else:
             return images, texts
 
@@ -516,7 +516,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_selection=None, return_strength=False, ori_proportion=None):
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, return_guidance=False, ori_proportion=None):
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
 
@@ -535,9 +535,9 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_
                          caption_key=args.csv_caption_key,
                          sep=args.csv_separator,
                          label_key=label_key, 
-                         strength=strength, 
+                         guidance=guidance, 
                          list_selection=list_selection,
-                         return_strength=return_strength, 
+                         return_guidance=return_guidance, 
                          ori_proportion=ori_proportion,)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
@@ -579,7 +579,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None, ori_proportion=None):
+def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -588,7 +588,7 @@ def get_data(args, preprocess_fns, epoch=0, strength=None, list_selection=None, 
                                                          preprocess_train,
                                                          is_train=True,
                                                          epoch=epoch, 
-                                                         strength=strength, list_selection=list_selection,
+                                                         guidance=guidance, list_selection=list_selection,
                                                          ori_proportion=ori_proportion,)
 
     return data

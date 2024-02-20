@@ -27,53 +27,53 @@ import wandb
 import numpy as np
 
 
-def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
-    # sequentially use strength 
+def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
+    # sequentially use guidance 
     if ctype == 'no_curri':
         # iteratively loop over all guidance
-        cur_strength_id += 1
-        if cur_strength_id >= len(list_strength):
-            cur_strength_id = 0
-        cur_strength = list_strength[cur_strength_id]
-        return cur_strength_id, cur_strength
+        cur_guidance_id += 1
+        if cur_guidance_id >= len(list_guidance):
+            cur_guidance_id = 0  # guidance = 0
+        cur_guidance = list_guidance[cur_guidance_id]
+        return cur_guidance_id, cur_guidance
 
     elif ctype == 'in_curri':
         # have fixed curriculum length
         if cur_str_times < loop_times:
-            # cur_strength_id unchanged 
+            # cur_guidance_id unchanged 
             cur_str_times += 1
         else:
             cur_str_times = 1
-            cur_strength_id += 1
+            cur_guidance_id += 1
 
-            if cur_strength_id >= len(list_strength):
-                cur_strength_id = len(list_strength) - 1
+            if cur_guidance_id >= len(list_guidance):
+                cur_guidance_id = len(list_guidance) - 1
 
-        cur_strength = list_strength[cur_strength_id]
-        return cur_strength_id, cur_strength, cur_str_times
+        cur_guidance = list_guidance[cur_guidance_id]
+        return cur_guidance_id, cur_guidance, cur_str_times
 
     elif ctype == 'out_curri':
-        cur_strength = 0
+        cur_guidance = 100
         cur_str_times = 1
-        return cur_strength_id, cur_strength, cur_str_times
+        cur_guidance_id = list_guidance.index(cur_guidance)
+        return cur_guidance_id, cur_guidance, cur_str_times
     else:
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, epoch=0, ori_proportion=None):
+def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, list_classes=None, epoch=0, ori_proportion=None):
 
-    if cur_strength is not None:
-        logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
+    if cur_guidance is not None:
+        logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
-            wandb.log({"Epoch": epoch, "Image Guidance": 100-cur_strength})
+            wandb.log({"Epoch": epoch, "Image Guidance": cur_guidance})
             if ori_proportion is not None:
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
-
 
     # load dataloader
     img_text_data = get_data(
         args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess),
-        epoch=0, strength=cur_strength, list_selection=list_classes, ori_proportion=ori_proportion)
+        epoch=0, guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -89,24 +89,24 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
+def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
-    Dict_cur_strength = {}
+    Dict_cur_guidance = {}
     last_results = evaluate(model, args, classification_head_new,
-                                    Dict_cur_strength, logger, progress_eval=True)
+                                    Dict_cur_guidance, logger, progress_eval=True)
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
 
-    for key, value in Dict_cur_strength.items():
+    for key, value in Dict_cur_guidance.items():
         if 'Number' in key: 
             continue
         if 'F1' not in key:
             continue
-        if key not in last_strength:
-            last_strength[key] = 0
+        if key not in last_perform:
+            last_perform[key] = 0
 
-        guidance_i = int(key.replace('Strength ', '').replace(' Accuracy', '')).replace(' F1', '')
+        guidance_i = int(key.replace('Strength ', '').replace('Guidance ', '').replace(' Accuracy', '').replace(' F1', ''))
 
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
@@ -115,13 +115,69 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
             # compute for average here
             value = np.mean(np.array(progress_ma[guidance_i]))
 
-        str_progress[f"Guidance {100-guidance_i}"] = np.round(value - last_strength[key], 6)
-        res_progress[guidance_i] = value - last_strength[key]
+        str_progress[f"Guidance {guidance_i}"] = np.round(value - last_perform[key], 6)
+        res_progress[guidance_i] = value - last_perform[key]
         cur_stats[guidance_i] = value
 
-    last_strength = copy.deepcopy(Dict_cur_strength)
-    return res_progress, str_progress, last_strength, cur_stats
+    last_perform = copy.deepcopy(Dict_cur_guidance)
+    return res_progress, str_progress, last_perform, cur_stats
 
+
+def init_guidance_setting(args):
+    cur_guidance = None
+    cur_guidance_id = 0
+    len_data = None
+    cur_str_times = 1
+    list_guidance = None
+
+    if args.curriculum:
+        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        if args.cont_finetune:
+            df_ori = df_ori[df_ori['label'].isin(list_classes)]
+
+        len_data = len(df_ori)
+        list_guidance = list(set(df_ori['guidance'].values.tolist()))
+        list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
+        if args.curriculum_epoch is None:
+            if cur_guidance is None:
+                # start from guidance = 0
+                cur_guidance_id = 0
+                cur_guidance = list_guidance[cur_guidance_id]
+        else:
+            # using curriculum_epoch to decide the current guidance
+            # finish viewing all guidance data during curriculum_epoch
+            len_ori = len(df_ori[df_ori['guidance']==100])
+            num_batch_ori = int(len_ori/args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+            len_all_guid = len(df_ori[df_ori['guidance']!=100])
+            total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
+            loop_times = math.ceil(total_viewing / len_all_guid)
+
+            # start from guidance = 0
+            if cur_guidance is None:
+                cur_guidance_id = 0
+                cur_guidance = list_guidance[cur_guidance_id]
+    
+    elif args.baseline:
+        # train baseline with img guidance = 100
+        cur_guidance = 100
+        list_guidance = [cur_guidance]
+        cur_guidance_id = 0
+    
+    if args.guidance != -1:
+        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+        df_ori = df_ori[df_ori['guidance'] == args.guidance]
+        len_data = len(df_ori)
+
+        if args.datalimit != -1:
+            logger.info(f"Sample {args.datalimit} from original dataset")
+            df_ori = df_ori.sample(n=min(len_data, args.datalimit), random_state=1)
+            len_data = len(df_ori)
+
+        list_guidance = [args.guidance, ]
+        cur_guidance_id = 0
+        cur_guidance= args.guidance
+
+    return cur_guidance_id, cur_guidance, list_guidance
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
     model_path = ''
@@ -167,8 +223,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             list_classes.append(0)
         logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
     
-    cur_strength = None
-    cur_strength_id = 0
+    cur_guidance = None
+    cur_guidance_id = 0
     len_data = None
     cur_str_times = 1
     start_epoch = 0
@@ -193,9 +249,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     #         checkpoint = torch.load(loading_file)  
     #         start_epoch = checkpoint['epoch']
-    #         cur_strength = checkpoint['cur_strength']
+    #         cur_guidance = checkpoint['cur_guidance']
     #         cur_str_times = checkpoint['cur_str_times']
-    #         cur_strength_id = checkpoint['cur_strength_id']
+    #         cur_guidance_id = checkpoint['cur_guidance_id']
     #         model.load_state_dict(checkpoint['model_state_dict'])
     #         # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
@@ -208,59 +264,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    if args.curriculum:
-        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
-        if args.cont_finetune:
-            df_ori = df_ori[df_ori['label'].isin(list_classes)]
+    cur_guidance_id, cur_guidance, list_guidance = init_guidance_setting(args)
 
-        len_data = len(df_ori)
-        list_strength = list(set(df_ori['strength'].values.tolist()))
-        list_strength = sorted(list_strength, reverse=True)
-        if args.curriculum_epoch is None:
-            if cur_strength is None:
-                cur_strength_id = 0
-                cur_strength = list_strength[cur_strength_id]
-        else:
-            # using curriculum_epoch to decide the current strength
-            # finish viewing all strength data during curriculum_epoch
-            len_ori = len(df_ori[df_ori['strength']==0])
-            num_batch_ori = int(len_ori/args.batch_size)  # num of batch in non curriculum epoch (update iterations)
-            len_all_stre = len(df_ori[df_ori['strength']!=0])
-            total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
-            loop_times = math.ceil(total_viewing / len_all_stre)
-
-            # start from strength = 0 / img guidance = 100
-            if cur_strength is None:
-                cur_strength_id = 0
-                cur_strength = list_strength[cur_strength_id]
-    
-    elif args.baseline:
-        # train baseline
-        cur_strength_id = 0
-        cur_strength = 0
-
-    # run progress eval after single strength training
-    if args.strength != -1:
-        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
-        df_ori = df_ori[df_ori['strength'] == args.strength]
-        len_data = len(df_ori)
-
-        if args.datalimit != -1:
-            logger.info(f"Sample {args.datalimit} from original dataset")
-            df_ori = df_ori.sample(n=min(len_data, args.datalimit), random_state=1)
-            len_data = len(df_ori)
-
-        list_strength = [args.strength, ]
-        cur_strength_id = 0
-        cur_strength = args.strength
-
-    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0, ori_proportion=0.1)
+    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, list_classes=list_classes, epoch=0, ori_proportion=0.1)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
     if args.curriculum:
         if args.curriculum_epoch is None:
-            num_batches = int(len_data/args.batch_size) if len_data is not None else num_batches * len(list_strength)
+            num_batches = int(len_data/args.batch_size) if len_data is not None else num_batches * len(list_guidance)
         else:
             num_batches = num_batch_ori
     logger.info(f"Num batches is {num_batches}")
@@ -292,7 +304,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
     stats = []
-    last_strength = {}
+    last_perform = {}
     for epoch in trange(start_epoch+1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -301,12 +313,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
                             (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
 
-            if cur_strength != 0:
+            if cur_guidance != 0:
                 logger.info('Restart dataloader')
-                cur_strength = 0
+                cur_guidance = len(list_guidance) - 1
                 cur_str_times = 1
 
-                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=None)
+                ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=None)
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
@@ -333,20 +345,20 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     ori_proportion = None
                     if args.curriculum:
                         if epoch > args.curriculum_epoch:
-                            cur_strength = 0
-                            cur_strength_id = list_strength.index(cur_strength)
+                            cur_guidance = 100
+                            cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 1
                         else:
                             if not args.progress:
-                                # sequentially use strength 
+                                # sequentially use guidance 
                                 if args.curriculum_epoch is None:
-                                    cur_strength_id, cur_strength = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, ctype='no_curri')
+                                    cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id, ctype='no_curri')
                                 else:
-                                    cur_strength_id, cur_strength, cur_str_times = seq_curri_guid(list_strength, cur_strength_id=cur_strength_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
+                                    cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id, cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
 
                             else: 
-                                # select strength based on progress
-                                res_progress, _, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger)
+                                # select guidance based on progress
+                                res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
                                 list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                                 list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
                                 largest_guid = list_progress[0]
@@ -360,15 +372,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 else:
                                     next_guid = largest_guid
 
-                                cur_strength = next_guid[0]
-                                cur_strength_id = list_strength.index(cur_strength)
+                                cur_guidance = next_guid[0]
+                                cur_guidance_id = list_guidance.index(cur_guidance)
                                 cur_str_times = 0
 
                             if args.proportion:
                                 ori_proportion = 1 / args.curriculum_epoch * epoch
 
                         # TODO: ori_proportion
-                        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=ori_proportion)
+                        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch, ori_proportion=ori_proportion)
 
                     ft_iterator = iter(ft_dataloader)
                     ft_batch = next(ft_iterator)
@@ -412,7 +424,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 if args.ma_progress and (num_batches - i) % 100 == 0:
                     logger.info(f"Running progress evaluation for moving average with i={i}")
                     # calculate progress multiple times
-                    _, _, _, cur_stats = progress_eval(model, args, last_strength, epoch, logger)
+                    _, _, _, cur_stats = progress_eval(model, args, last_perform, epoch, logger)
 
                     for guid, value in cur_stats.items():
                         if guid not in progress_ma:
@@ -428,9 +440,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
             torch.save({
                     'epoch': epoch,
-                    'cur_strength': cur_strength,
+                    'cur_guidance': cur_guidance,
                     'cur_str_times': cur_str_times,
-                    'cur_strength_id': cur_strength_id,
+                    'cur_guidance_id': cur_guidance_id,
                     'model_state_dict': model.module.state_dict(),
                 }, model_path)
             # optimizer_path = os.path.join(args.save, f'optimizer_{epoch}.pt')
@@ -438,10 +450,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             logger.info('Saving model to' + str(model_path))
 
         #############################################
-        # Evaluate progress on different group of strength for this epoch
+        # Evaluate progress on different group of cur_guidance for this epoch
         if args.progress_eval:
             logger.info(f"Progress evaluation ...")
-            _, str_progress, last_strength, _ = progress_eval(model, args, last_strength, epoch, logger, progress_ma=progress_ma)
+            _, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger, progress_ma=progress_ma)
 
             str_progress['epoch'] = epoch
             df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
@@ -449,7 +461,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             
             # save progress_ma:
             with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
-                pickle.dump([last_strength, progress_ma], f)
+                pickle.dump([last_perform, progress_ma], f)
 
             progress_ma = dict()
 
