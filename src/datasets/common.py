@@ -13,8 +13,10 @@ import torchvision.datasets as datasets
 from torch.utils.data import Dataset, DataLoader, Sampler
 import pdb
 
+
 class SubsetSampler(Sampler):
-    def __init__(self, indices):
+    def __init__(self,
+                 indices):
         self.indices = indices
 
     def __iter__(self):
@@ -23,8 +25,12 @@ class SubsetSampler(Sampler):
     def __len__(self):
         return len(self.indices)
 
+
 class ImageFolderWithPaths(datasets.ImageFolder):
-    def __init__(self, path, transform, flip_label_prob=0.0):
+    def __init__(self,
+                 path,
+                 transform,
+                 flip_label_prob=0.0):
         super().__init__(path, transform)
         self.flip_label_prob = flip_label_prob
         if self.flip_label_prob > 0:
@@ -32,13 +38,14 @@ class ImageFolderWithPaths(datasets.ImageFolder):
             num_classes = len(self.classes)
             for i in range(len(self.samples)):
                 if random.random() < self.flip_label_prob:
-                    new_label = random.randint(0, num_classes-1)
+                    new_label = random.randint(0, num_classes - 1)
                     self.samples[i] = (
                         self.samples[i][0],
                         new_label
                     )
 
-    def __getitem__(self, index):
+    def __getitem__(self,
+                    index):
         image, label = super(ImageFolderWithPaths, self).__getitem__(index)
         return {
             'images': image,
@@ -47,10 +54,12 @@ class ImageFolderWithPaths(datasets.ImageFolder):
         }
 
 
-def maybe_dictionarize(batch, progress_eval=False):
+def maybe_dictionarize(batch,
+                       progress_eval=False,
+                       progress_train=False):
     if isinstance(batch, dict):
         return batch
-        
+
     if len(batch) == 2:
         batch = {'images': batch[0], 'labels': batch[1]}
     elif len(batch) == 3:
@@ -58,15 +67,21 @@ def maybe_dictionarize(batch, progress_eval=False):
     elif len(batch) == 4:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
     elif progress_eval:
-        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'guidance': batch[-1]}
-
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3],
+                 'guidance': batch[-1]}
+    elif progress_train:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3],
+                 'guidance': batch[4], 'img_id': batch[-1]}
     else:
         raise ValueError(f'Unexpected number of elements: {len(batch)}')
 
     return batch
 
 
-def get_features_helper(image_encoder, dataloader, device, noscale):
+def get_features_helper(image_encoder,
+                        dataloader,
+                        device,
+                        noscale):
     all_data = collections.defaultdict(list)
     image_encoder = image_encoder.to(device)
     image_encoder = torch.nn.DataParallel(image_encoder, device_ids=[x for x in range(torch.cuda.device_count())])
@@ -102,7 +117,12 @@ def get_features_helper(image_encoder, dataloader, device, noscale):
     return all_data
 
 
-def get_features(is_train, image_encoder, dataset, device, cache_dir, noscale):
+def get_features(is_train,
+                 image_encoder,
+                 dataset,
+                 device,
+                 cache_dir,
+                 noscale):
     split = 'train' if is_train else 'val'
     dname = type(dataset).__name__
     # import pdb;pdb.set_trace()
@@ -130,19 +150,29 @@ def get_features(is_train, image_encoder, dataset, device, cache_dir, noscale):
 
 
 class FeatureDataset(Dataset):
-    def __init__(self, is_train, image_encoder, dataset, device, cache_dir=None, noscale=True):
+    def __init__(self,
+                 is_train,
+                 image_encoder,
+                 dataset,
+                 device,
+                 cache_dir=None,
+                 noscale=True):
         self.data = get_features(is_train, image_encoder, dataset, device, cache_dir, noscale)
 
     def __len__(self):
         return len(self.data['features'])
 
-    def __getitem__(self, idx):
+    def __getitem__(self,
+                    idx):
         data = {k: v[idx] for k, v in self.data.items()}
         data['features'] = torch.from_numpy(data['features']).float()
         return data
 
 
-def get_dataloader(dataset, is_train, args, image_encoder=None):
+def get_dataloader(dataset,
+                   is_train,
+                   args,
+                   image_encoder=None):
     if image_encoder is not None:
         feature_dataset = FeatureDataset(is_train, image_encoder, dataset, args.device, args.cache_dir, args.noscale)
         dataloader = DataLoader(feature_dataset, batch_size=args.batch_size, shuffle=is_train)

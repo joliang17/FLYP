@@ -165,6 +165,8 @@ def parse_arguments():
 
     parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--progress_train', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--progress_validation', action=argparse.BooleanOptionalAction)

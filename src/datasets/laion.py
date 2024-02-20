@@ -50,16 +50,23 @@ class CsvDataset(Dataset):
 
         # TODO: for sample experiment, only sample few samples from training data
         if return_img_id:
+            # sort the df by img_id
+            df = df[df['img_id'] != -1]
             df = df.sample(n=10000, replace=False, ignore_index=True)  # TODO: remove this line
+            df = df.sort_values(by='img_id', )
 
         ##########################
         # mixture from original data * image guidance
         if ori_proportion is not None:
             df_ori = df[df['guidance'] == 100]
 
+        ##########################
+        # only loading guidance
         if guidance is not None:
             df = df[df['guidance'] == guidance]
 
+        ##########################
+        # mixture from original data * image guidance
         if ori_proportion is not None:
             num_df = len(df)
             num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
@@ -87,8 +94,7 @@ class CsvDataset(Dataset):
 
         self.return_img_id = return_img_id
         if self.return_img_id:
-            self.img_id = df['filepath'].tolist()
-            self.img_id = [item.split('/')[-1].replace('.jpg', '') for item in self.img_id]  #
+            self.img_id = df['img_id'].tolist()
 
         self.captions_list = []
         for k in range(1, num_columns):
@@ -121,6 +127,7 @@ class CsvDataset(Dataset):
 
         texts = tokenize([str(self.captions[idx])])[0]
 
+        return_label = [images, texts, ]
         if len(self.captions_list) > 0:
             texts_list = [
                 tokenize([str(self.captions_list[i][idx])])[0]
@@ -129,40 +136,35 @@ class CsvDataset(Dataset):
             texts_list.append(texts)
             texts_list = torch.stack(texts_list, dim=0)
             perm = torch.randperm(texts_list.shape[0])
-
             texts_list = texts_list[perm, :]
 
-        if self.return_guidance:
-            guidance = self.guidance[idx]
+            return_label.append(texts_list)
 
         if self.return_label:
             label = self.labels[idx]
             f_path = self.img_path[idx]
-            if len(self.captions_list) > 0:
-                return images, texts, texts_list, label, f_path
-            else:
-                if self.return_guidance:
-                    return images, texts, label, f_path, guidance
-                else:
-                    return images, texts, label, f_path,
 
-        if len(self.captions_list) > 0:
-            if self.return_guidance:
-                return images, texts, texts_list, guidance
-            else:
-                return images, texts, texts_list
+            return_label.append(label)
+            return_label.append(f_path)
 
         if self.return_guidance:
-            return images, texts, guidance
-        else:
-            return images, texts
+            guidance = self.guidance[idx]
+            return_label.append(guidance)
+
+        if self.return_img_id:
+            img_id = self.img_id[idx]
+            return_label.append(img_id)
+
+        return return_label
 
 
 class SharedEpoch:
-    def __init__(self, epoch: int = 0):
+    def __init__(self,
+                 epoch: int = 0):
         self.shared_epoch = Value('i', epoch)
 
-    def set_value(self, epoch):
+    def set_value(self,
+                  epoch):
         self.shared_epoch.value = epoch
 
     def get_value(self):
@@ -175,7 +177,8 @@ class DataInfo:
     sampler: DistributedSampler = None
     shared_epoch: SharedEpoch = None
 
-    def set_epoch(self, epoch):
+    def set_epoch(self,
+                  epoch):
         if self.shared_epoch is not None:
             self.shared_epoch.set_value(epoch)
         if self.sampler is not None and isinstance(self.sampler,
@@ -210,7 +213,9 @@ def get_dataset_size(shards):
     return total_size, num_shards
 
 
-def get_imagenet(args, preprocess_fns, split):
+def get_imagenet(args,
+                 preprocess_fns,
+                 split):
     assert split in ["train", "val", "v2"]
     is_train = split == "train"
     preprocess_train, preprocess_val = preprocess_fns
@@ -311,7 +316,8 @@ def group_by_keys_nothrow(data,
         yield current_sample
 
 
-def tarfile_to_samples_nothrow(src, handler=log_and_continue):
+def tarfile_to_samples_nothrow(src,
+                               handler=log_and_continue):
     # NOTE this is a re-impl of the webdataset impl with group_by_keys that doesn't throw
     streams = url_opener(src, handler=handler)
     files = tar_file_expander(streams, handler=handler)
@@ -348,7 +354,8 @@ class detshuffle2(wds.PipelineStage):
         self.seed = seed
         self.epoch = epoch
 
-    def run(self, src):
+    def run(self,
+            src):
         if isinstance(self.epoch, SharedEpoch):
             epoch = self.epoch.get_value()
         else:
@@ -406,7 +413,11 @@ class ResampledShards2(IterableDataset):
             yield dict(url=self.rng.choice(self.urls))
 
 
-def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
+def get_wds_dataset(args,
+                    preprocess_img,
+                    is_train,
+                    epoch=0,
+                    floor=False):
     input_shards = args.replay_data  # if is_train else args.val_data
     assert input_shards is not None
     resampled = getattr(args, 'dataset_resampled', False) and is_train
@@ -526,8 +537,15 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, return_guidance=False,
-                    ori_proportion=None, return_img_id=False):
+def get_csv_dataset(args,
+                    preprocess_fn,
+                    is_train,
+                    epoch=0,
+                    guidance=None,
+                    list_selection=None,
+                    return_guidance=False,
+                    ori_proportion=None,
+                    return_img_id=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -573,7 +591,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     return DataInfo(dataloader, sampler)
 
 
-def get_dataset_fn(data_path, dataset_type):
+def get_dataset_fn(data_path,
+                   dataset_type):
     if dataset_type == "webdataset":
         return get_wds_dataset
     elif dataset_type == "csv":
@@ -592,7 +611,12 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None):
+def get_data(args,
+             preprocess_fns,
+             epoch=0,
+             guidance=None,
+             list_selection=None,
+             ori_proportion=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
