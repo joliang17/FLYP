@@ -60,7 +60,7 @@ class CsvDataset(Dataset):
         if ori_proportion is not None:
             num_df = len(df)
             num_ori = min(len(df_ori), int(num_df/(1-ori_proportion) * ori_proportion))
-            df_ori.sample(n=num_ori, replace=True)
+            df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
             logging.info(f'Loading csv data from {input_filename}.')
 
