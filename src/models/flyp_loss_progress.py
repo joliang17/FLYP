@@ -86,7 +86,7 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
+def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):last_perform
     
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_strength = {}
@@ -99,10 +99,12 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
     for key, value in Dict_cur_strength.items():
         if 'Number' in key: 
             continue
-        if key not in last_strength:
-            last_strength[key] = 0
+        if 'F1' not in key:
+            continue
+        if key not in last_perform:
+            last_perform[key] = 0
 
-        strength_i = int(key.replace('Strength ', '').replace(' Accuracy', ''))
+        strength_i = int(key.replace('Strength ', '').replace(' Accuracy', '').replace(' F1', ''))
 
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
@@ -111,19 +113,19 @@ def progress_eval(model, args, last_strength, epoch, logger, progress_ma=None):
             # compute for average here
             value = np.mean(np.array(progress_ma[strength_i]))
 
-        str_progress[f"Guidance {100-strength_i}"] = np.round(value - last_strength[key], 6)
-        res_progress[strength_i] = value - last_strength[key]
+        str_progress[f"Guidance {100-strength_i}"] = np.round(value - last_perform[key], 6)
+        res_progress[strength_i] = value - last_perform[key]
         cur_stats[strength_i] = value
 
-    last_strength = copy.deepcopy(Dict_cur_strength)
-    return res_progress, str_progress, last_strength, cur_stats
+    last_perform = copy.deepcopy(Dict_cur_strength)
+    return res_progress, str_progress, last_perform, cur_stats
 
 
 def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     def train_model_basedon_guid(guid, cur_step):
         cur_str_times = 1
         id_flyp_loss_sum = 0
-        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=guid)
+        ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=100-guid)
         ft_iterator = iter(ft_dataloader)
         num_batches = len(ft_dataloader)
 
@@ -161,7 +163,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                     f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                     f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-                res_progress, _, _, _ = progress_eval(model, args, last_strength, epoch=epoch, logger=logger)
+                res_progress, _, _, _ = progress_eval(model, args, last_perform, epoch=epoch, logger=logger)
                 res_progress["Epoch"] = epoch
                 res_progress["Trained_guid"] = guid
                 # wandb.log(res_progress)
@@ -180,9 +182,9 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         # model.load_state_dict(checkpoint['model_state_dict'])
         model.load_state_dict(new_state_dict)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        last_strength = checkpoint['last_progress']
+        last_perform = checkpoint['last_progress']
         step = checkpoint['step']
-        return last_strength, step
+        return last_perform, step
          
 
     assert args.train_dataset is not None, "Please provide a training dataset."
@@ -304,14 +306,14 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
     stats = []
-    last_strength = {}
+    last_perform = {}
     epoch = -1
 
     ## progress validation expr
     # 0. save the current start model
     os.makedirs(args.save, exist_ok=True)
-    model_path = os.path.join(args.save, f'cur_point{epoch}_guidpath00.pt')
-    torch.save({'model_state_dict': model.module.state_dict(), 'last_progress': last_strength, 'optimizer_state_dict': optimizer.state_dict(), 'step': 0}, model_path)
+    model_path = os.path.join(args.save, f'cur_point{epoch}_guidpath-1.pt')
+    torch.save({'model_state_dict': model.module.state_dict(), 'last_progress': last_perform, 'optimizer_state_dict': optimizer.state_dict(), 'step': 0}, model_path)
     logger.info('Saving model to' + str(model_path))
 
     stats = []
@@ -328,10 +330,10 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
             last_guid_path = last_guid_path_str.split('=')
             last_guid_path = list(map(int, last_guid_path))  # transform to int
             
-            last_strength, step = loading_model(last_model_path)
+            last_perform, step = loading_model(last_model_path)
 
             # # 2. eval progress of different guidance based on this last model
-            res_progress, str_progress, last_strength, _ = progress_eval(model, args, last_strength, epoch=-1, logger=logger)
+            res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=-1, logger=logger)
             list_progress = [(strgh, value) for strgh, value in res_progress.items()]
             list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
 
@@ -340,21 +342,22 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
             df_str_progress.to_csv(log_dir + f'/progress{epoch}_before_guidpath{last_guid_path_str}.tsv', sep='\t')
 
             # 3. train the model with different guidance data (all start from the same ckpt)
-            for guid_pair in list_progress:
+            for strgth_pair in list_progress:
                 epoch_stats = {}
                 epoch_stats['last_model_name'] = last_model_name
                 epoch_stats['epoch'] = epoch
 
                 # pdb.set_trace()
                 # load the the last saved model and train the model with guidance data
-                last_strength, step = loading_model(last_model_path)
+                last_perform, step = loading_model(last_model_path)
                 # pdb.set_trace()
 
                 logger.info(f'start step: {str(step)}')
 
                 # load guidance data
-                guid_int = 100 - guid_pair[0]
-                progress = guid_pair[1]
+                strgth_int = strgth_pair[0]
+                guid_int = 100 - strgth_pair[0]
+                progress = strgth_pair[1]
                 
                 cur_guid_path = copy.deepcopy(last_guid_path)
                 cur_guid_path.append(guid_int)
@@ -368,7 +371,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 
                 # 4. eval the trained model on the guidance dataset / wildcamp dataset
                 # guidance dataset
-                res_progress, str_progress, last_strength, _ = progress_eval(model, args, last_strength, epoch=epoch, logger=logger)
+                res_progress, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch=epoch, logger=logger)
                 res_progress["Epoch"] = epoch
                 res_progress["Trained_guid"] = guid_int
                 # wandb.log(res_progress)
@@ -403,7 +406,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
                 epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
                 
-                list_model_performance.append([epoch, guid_int, last_strength, cur_guid_path_str, step, epoch_stats['IWildCamOODF1-macro_all'], model.module.state_dict(), ])
+                list_model_performance.append([epoch, guid_int, last_perform, cur_guid_path_str, step, epoch_stats['IWildCamOODF1-macro_all'], model.module.state_dict(), ])
 
                 stats.append(epoch_stats)
                 stats_df = pd.DataFrame(stats)

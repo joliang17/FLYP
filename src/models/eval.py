@@ -23,7 +23,7 @@ def logging_input(curinput='', logger=None):
 
 def process_train_stat(results, train_stats, logger, dataset_name=''):
     for key, val in results.items():
-        if 'worst' in key or 'f1' in key.lower() or 'pm0' in key:
+        if ('worst' in key or 'f1' in key.lower() or 'pm0' in key) and 'strength' not in key.lower():
             logging_input(f"{dataset_name} {key}: {val:.4f}", logger)
             train_stats[dataset_name + key] = round(val, 4)
     return 
@@ -40,7 +40,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if progress_eval:
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_strength=True).dataloader
-        num_classes = dataloader.num_classes
+        # num_classes = dataloader.num_classes
 
     elif not args.self_data:
         ## equals to dataloader = dataset.test_loader
@@ -179,10 +179,13 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         for str_i in dict_labels.keys():
             cur_str_labels = dict_labels[str_i]
             cur_str_preds = dict_preds[str_i]
+            # pdb.set_trace()
             cur_str_labels = torch.cat(cur_str_labels)
+            # cur_str_labels = torch.squeeze(cur_str_labels)
             cur_str_preds = torch.cat(cur_str_preds)
-            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=100, average="macro")
-            dict_strength_f1[str_i] = f1_cur_str
+            cur_str_preds = torch.squeeze(cur_str_preds)
+            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
+            dict_strength_f1[str_i] = f1_cur_str.item()
         metrics['strength_f1'] = dict_strength_f1
 
     if 'top1' not in metrics:

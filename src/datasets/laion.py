@@ -92,7 +92,7 @@ class CsvDataset(Dataset):
             self.img_path = df["filepath"].tolist()
         self.transforms = transforms
 
-        self.classes = max(self.labels) + 1
+        # self.classes = max(self.labels) + 1
         logging.info(f'Loading data with length {len(self.images)}.')
 
     def __len__(self):
@@ -555,7 +555,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, strength=None, list_
     )
     dataloader.num_samples = num_samples
     dataloader.num_batches = len(dataloader)
-    dataloader.num_classes = dataset.classes
+    # dataloader.num_classes = dataset.classes
 
     return DataInfo(dataloader, sampler)
 
