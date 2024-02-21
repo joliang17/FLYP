@@ -86,8 +86,11 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     classification_head.eval()
 
     if progress_eval:
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True).dataloader
-        # num_classes = dataloader.num_classes
+        if args.progress_train:
+            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True, return_img_id=True).dataloader
+        else:
+            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True).dataloader
+
 
     elif not args.self_data:
         ## equals to dataloader = dataset.test_loader
@@ -122,12 +125,17 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         dict_class = dict()
         dict_guidance = dict()
         for i, data in batched_data:
-            data = maybe_dictionarize(data, progress_eval=progress_eval)
+            if args.progress_train:
+                data = maybe_dictionarize(data, progress_train=True)
+            else:
+                data = maybe_dictionarize(data, progress_eval=progress_eval)
+
             x = data[input_key].to(device)
             y = data['labels'].to(device)
+            
             if progress_eval and 'guidance' in data:
                 guidance = data['guidance']
-
+            
             if 'image_paths' in data:
                 image_paths = data['image_paths']
 
@@ -172,7 +180,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_class[cls_i][0] += cur_correct
                     dict_class[cls_i][1] += cur_num
                 
-                if progress_eval:
+                if progress_eval or args.progress_train:
                     guidances = torch.unique(guidance)
                     for guid_i in guidances:
                         guid_i = guid_i.item()

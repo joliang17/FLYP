@@ -65,7 +65,7 @@ class CsvDataset(Dataset):
         # only loading guidance
         if guidance is not None:
             df = df[df['guidance'] == guidance]
-            if datalimit != -1:
+            if datalimit != -1 and len(df) > datalimit:
                 df = df.sample(n=datalimit, replace=False, ignore_index=True) 
 
         ##########################
