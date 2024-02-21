@@ -7,6 +7,7 @@ from src.models import utils
 from src.datasets.common import get_dataloader, maybe_dictionarize
 from src.datasets.laion import get_data, get_csv_dataset
 
+from tqdm import tqdm
 import src.datasets as datasets
 import torch.nn.functional as F
 from torcheval.metrics.functional import multiclass_f1_score
@@ -45,7 +46,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
     dict_preds = dict()  # save predict value of currect class for each image with different strength
 
     with torch.no_grad():
-        for i, data in batched_data:
+        for i, data in tqdm(batched_data, total=len(dataloader)):
             data = maybe_dictionarize(data, progress_train=True)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
@@ -132,8 +133,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
             x = data[input_key].to(device)
             y = data['labels'].to(device)
-            
-            if progress_eval and 'guidance' in data:
+
+            if 'guidance' in data:
                 guidance = data['guidance']
             
             if 'image_paths' in data:
