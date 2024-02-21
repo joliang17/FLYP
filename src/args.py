@@ -171,6 +171,13 @@ def parse_arguments():
 
     parser.add_argument('--progress_validation', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument(
+        "--progress_metric",
+        type=str,
+        default='Acc',
+        help="Acc or F1.",
+    )
+
     parser.add_argument('--ma_progress', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore', action=argparse.BooleanOptionalAction)

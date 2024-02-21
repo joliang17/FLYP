@@ -109,15 +109,21 @@ def progress_eval(model,
                   progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True)
+    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True,)
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
 
+    if args.progress_metric == 'Acc':
+        keywords = 'Accuracy'
+    else:
+        keywords = 'F1'
+    logger.info(f"Computing progress based on metric {keywords}")
+
     for key, value in Dict_cur_guidance.items():
         if 'Number' in key:
             continue
-        if 'F1' not in key:
+        if keywords not in key:
             continue
         if key not in last_perform:
             last_perform[key] = 0
@@ -524,17 +530,16 @@ def flyp_loss(args,
 
         #############################################
         # Find the best guidance for each img for current model
-        if args.progress_train:
-            logger.info(f"Progress evaluation on training data ...")
-            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                             progress_ma=progress_ma)
-            dict_best_guid['Epoch'] = epoch
+        # if args.progress_train:
+        #     logger.info(f"Progress evaluation on training data ...")
+        #     dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+        #                                                      progress_ma=progress_ma)
+        #     dict_best_guid['Epoch'] = epoch
 
-            # save progress_ma:
-            with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+        #     # save progress_ma:
+        #     with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
+        #         pickle.dump(dict_best_guid, f)
 
-            # pdb.set_trace()
 
         #############################################
         # Evaluate progress on different group of cur_guidance for this epoch
