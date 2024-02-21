@@ -4,11 +4,10 @@
 #SBATCH --output=flyp_loss_curri_strength_1.out.%j
 #SBATCH --error=flyp_loss_curri_strength_1.out.%j
 #SBATCH --time=48:00:00
-#SBATCH --account=cml-zhou
-#SBATCH --partition=cml-dpart
-#SBATCH --qos=cml-medium
-#SBATCH --gres=gpu:a100:1
-#SBATCH --cpus-per-task=6
+#SBATCH --account=scavenger 
+#SBATCH --partition=scavenger
+#SBATCH --gres=gpu:rtxa6000:1
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 
 

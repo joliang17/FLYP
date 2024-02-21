@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=flyp_loss_curri_prog_v13_3
-#SBATCH --output=flyp_loss_curri_prog_v13_3.out.%j
-#SBATCH --error=flyp_loss_curri_prog_v13_3.out.%j
+#SBATCH --job-name=flyp_loss_curri_prog_v32
+#SBATCH --output=flyp_loss_curri_prog_v32.out.%j
+#SBATCH --error=flyp_loss_curri_prog_v32.out.%j
 #SBATCH --time=48:00:00
 #SBATCH --account=cml-zhou
 #SBATCH --partition=cml-dpart
@@ -29,4 +29,4 @@ SAVED_FOLDER="../data/metadata/clip_newcurri/"
 # python datacreation_scripts/iwildcam.py --mode="curriculum" --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --total_train
 # python datacreation_scripts/iwildcam.py --mode="test" --save_folder=${SAVED_FOLDER} --input_folder=${TEST_FOLDER} --curriculum
 
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=256 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="./datasets/data/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv" --csv-img-key filepath --csv-caption-key title --exp_name=flyp_loss_curri_prog_v13_3 --curriculum --curriculum_epoch=5 --scheduler=default --workers=4 --proportion
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=256 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="./datasets/data/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv" --csv-img-key filepath --csv-caption-key title --exp_name=flyp_loss_curri_prog_v33 --progress_eval --curriculum --curriculum_epoch=10 --scheduler=default --workers=4 --progress --explore
