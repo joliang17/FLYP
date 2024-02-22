@@ -85,7 +85,8 @@ def load_data(logger,
         return_img_id = True
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-        guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion, return_img_id=return_img_id)
+                             guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
+                             return_img_id=return_img_id)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -112,7 +113,7 @@ def progress_eval(model,
                   progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True,)
+    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True, )
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
@@ -194,13 +195,13 @@ def progress_eval_train(model,
     return dict_best_guid
 
 
-def init_guidance_setting(args, logger,
+def init_guidance_setting(args,
+                          logger,
                           list_classes=None, ):
     cur_guidance = None
     cur_guidance_id = 0
     len_data = None
     loop_times = 1
-    cur_str_times = 1
     list_guidance = None
     num_batch_ori = None
 
@@ -340,13 +341,13 @@ def flyp_loss(args,
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args, logger,
-                                                                                                              list_classes=list_classes)
+    init_data = init_guidance_setting(args, logger, list_classes=list_classes)
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_data
 
     ori_proportion = None
-    if args.proportion: 
+    if args.proportion:
         ori_proportion = 0.1
-        
+
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
                               list_classes=list_classes, epoch=0, ori_proportion=ori_proportion)
     ft_iterator = iter(ft_dataloader)
@@ -429,58 +430,54 @@ def flyp_loss(args,
                 ft_batch = next(ft_iterator)
             except StopIteration:
                 ori_proportion = None
-                if args.curriculum:
-                    if epoch > args.curriculum_epoch:
-                        cur_guidance = 100
-                        cur_guidance_id = list_guidance.index(cur_guidance)
-                        cur_str_times = 1
+                if args.curriculum and epoch > args.curriculum_epoch:
+                    cur_guidance = 100
+                    cur_guidance_id = list_guidance.index(cur_guidance)
+                    cur_str_times = 1
+                elif args.curriculum and not args.progress:
+                    # sequentially use guidance
+                    if args.curriculum_epoch is None:
+                        cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
+                                                                       ctype='no_curri')
                     else:
-                        if not args.progress:
-                            # sequentially use guidance 
-                            if args.curriculum_epoch is None:
-                                cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance,
-                                                                                cur_guidance_id=cur_guidance_id,
-                                                                                ctype='no_curri')
-                            else:
-                                cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
-                                                                                                cur_guidance_id=cur_guidance_id,
-                                                                                                cur_str_times=cur_str_times,
-                                                                                                ctype='in_curri',
-                                                                                                loop_times=loop_times)
+                        cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
+                                                                                      cur_guidance_id=cur_guidance_id,
+                                                                                      cur_str_times=cur_str_times,
+                                                                                      ctype='in_curri',
+                                                                                      loop_times=loop_times)
+                elif args.curriculum and args.progress:
+                    # if find guidance on training samples
+                    # if args.cluster == 'loss':
+                    #     pdb.set_trace()
+                    #     print(loss_pairs)
 
+                    # select guidance based on progress
+                    res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
+                    list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                    list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                    largest_guid = list_progress[0]
+                    if args.explore:
+                        # randomly select a guid with 15%, use the largest with 85%
+                        rand_prob = random.uniform(0, 1)
+                        if rand_prob <= 0.15:
+                            next_guid = random.choice(list_progress)
                         else:
-                            # if find guidance on training samples
-                            # if args.cluster == 'loss':
-                            #     pdb.set_trace()
-                            #     print(loss_pairs)
-                                
-                            # select guidance based on progress
-                            res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch,
-                                                                                logger)
-                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                            largest_guid = list_progress[0]
-                            if args.explore:
-                                # randomly select a guid with 15%, use the largest with 85%
-                                rand_prob = random.uniform(0, 1)
-                                if rand_prob <= 0.15:
-                                    next_guid = random.choice(list_progress)
-                                else:
-                                    next_guid = largest_guid
-                            else:
-                                next_guid = largest_guid
+                            next_guid = largest_guid
+                    else:
+                        next_guid = largest_guid
 
-                            cur_guidance = next_guid[0]
-                            cur_guidance_id = list_guidance.index(cur_guidance)
-                            cur_str_times = 0
+                    cur_guidance = next_guid[0]
+                    cur_guidance_id = list_guidance.index(cur_guidance)
+                    cur_str_times = 0
 
-                        if args.proportion:
-                            ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
+                if args.curriculum:
+                    if args.proportion:
+                        ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
 
                     # ori_proportion
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                                cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                                ori_proportion=ori_proportion)
+                                              cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
+                                              ori_proportion=ori_proportion)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -546,37 +543,39 @@ def flyp_loss(args,
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
             torch.save({'epoch': epoch, 'cur_guidance': cur_guidance, 'cur_str_times': cur_str_times,
-                'cur_guidance_id': cur_guidance_id, 'model_state_dict': model.module.state_dict(), }, model_path)
+                        'cur_guidance_id': cur_guidance_id, 'model_state_dict': model.module.state_dict(), },
+                       model_path)
             # optimizer_path = os.path.join(args.save, f'optimizer_{epoch}.pt')
             # torch.save({'optimizer_state_dict': optimizer.state_dict(),}, optimizer_path)
             logger.info('Saving model to' + str(model_path))
 
-        #############################################
-        # Find the best guidance for each img for current model
-        if args.progress_train:
-            logger.info(f"Progress evaluation on training data ...")
-            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                             progress_ma=progress_ma)
-            dict_best_guid['Epoch'] = epoch
-
-            # save progress_ma:
-            with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
-            
-            if args.cluster == 'loss':
-                from sklearn.cluster import KMeans
-                import numpy as np
-                list_loss = [item[-1] for item in loss_pairs]
-                arr_loss = np.array(list_loss).reshape(-1, 1)
-                n_clusters = 7
-                kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(arr_loss)
-                arr_labels = kmeans.labels_
-                list_cluster_label = arr_labels.tolist()
-                new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
-                with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
-                    pickle.dump(new_loss_pair, f)
-
-            exit(0)
+        # #############################################
+        # # Find the best guidance for each img for current model
+        # if args.progress_train:
+        #     logger.info(f"Progress evaluation on training data ...")
+        #     dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+        #                                          progress_ma=progress_ma)
+        #     dict_best_guid['Epoch'] = epoch
+        #
+        #     # save progress_ma:
+        #     with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
+        #         pickle.dump(dict_best_guid, f)
+        #
+        #     if args.cluster == 'loss':
+        #         from sklearn.cluster import KMeans
+        #         import numpy as np
+        #         list_loss = [item[-1] for item in loss_pairs]
+        #         arr_loss = np.array(list_loss).reshape(-1, 1)
+        #         n_clusters = 7
+        #         kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(arr_loss)
+        #         arr_labels = kmeans.labels_
+        #         list_cluster_label = arr_labels.tolist()
+        #         new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
+        #         with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
+        #             pickle.dump(new_loss_pair, f)
+        #
+        #     exit(0)
+        # #############################################
 
         #############################################
         # Evaluate progress on different group of cur_guidance for this epoch

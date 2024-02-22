@@ -145,7 +145,8 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    # cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_guidance_setting(args, logger)
+    # init_data = init_guidance_setting(args, logger, list_classes=list_classes)
+    # cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_data
 
     classification_head.train()
     model.train()
