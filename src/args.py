@@ -178,6 +178,12 @@ def parse_arguments():
         help="Acc or F1.",
     )
 
+    parser.add_argument(
+        "--cluster",
+        type=str,
+        default='',
+        help="cluster method, loss / others",
+    )
     parser.add_argument('--ma_progress', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore', action=argparse.BooleanOptionalAction)
@@ -291,6 +297,11 @@ def parse_arguments():
                         type=int,
                         default=-1,
                         help="Number of dataloader workers per GPU.")
+
+    parser.add_argument("--slurm_job_id",
+                        type=int,
+                        default=-1,
+                        help="SLURM job id.")
                         
     parsed_args = parser.parse_args()
 

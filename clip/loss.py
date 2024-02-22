@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import pdb
 
 try:
     import torch.distributed.nn
@@ -203,7 +204,8 @@ class ClipLoss(nn.Module):
                     self.prev_num_logits = num_logits
             else:
                 labels = self.labels[device]
+            
+            total_loss = (F.cross_entropy(logits_per_image, labels, reduction='none') +
+                          F.cross_entropy(logits_per_text, labels, reduction='none')) / 2
 
-            total_loss = (F.cross_entropy(logits_per_image, labels) +
-                          F.cross_entropy(logits_per_text, labels)) / 2
         return total_loss

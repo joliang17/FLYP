@@ -11,6 +11,7 @@ from tqdm import tqdm
 import src.datasets as datasets
 import torch.nn.functional as F
 from torcheval.metrics.functional import multiclass_f1_score
+from src.datasets.iwildcam import IWildCamOOD
 import pdb
 
 
@@ -38,7 +39,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
     classification_head.eval()
 
     dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
-                                 return_guidance=True, return_img_id=True).dataloader
+                                 return_guidance=True, return_img_id=True, only_img_id=True).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -47,6 +48,8 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
 
     with torch.no_grad():
         for i, data in tqdm(batched_data, total=len(dataloader)):
+            if i >= 100:
+                break
             data = maybe_dictionarize(data, progress_train=True)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
@@ -88,7 +91,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if progress_eval:
         if args.progress_train:
-            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True, return_img_id=True).dataloader
+            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True, return_img_id=True, only_img_id=True).dataloader
         else:
             dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True).dataloader
 
@@ -120,6 +123,12 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if progress_eval:
         dict_labels = dict()
         dict_preds = dict()
+
+    list_index = None
+    if isinstance(dataset, IWildCamOOD):
+        import pickle
+        with open(f"../data/analysis/test_used_id/all_index.pkl", 'rb') as f:
+            list_index = pickle.load(f)
 
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
@@ -181,7 +190,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_class[cls_i][0] += cur_correct
                     dict_class[cls_i][1] += cur_num
                 
-                if progress_eval or args.progress_train:
+                if progress_eval and args.progress_train:
                     guidances = torch.unique(guidance)
                     for guid_i in guidances:
                         guid_i = guid_i.item()
@@ -211,10 +220,17 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                 all_metadata.extend(metadata)
 
         top1 = correct / n
-
         if args.self_data or hasattr(dataset, 'post_loop_metrics'):
             all_labels = torch.cat(all_labels)
             all_preds = torch.cat(all_preds)
+
+            if list_index is not None:
+                # exclude test cases in validate set
+                mask = torch.ones(all_labels.shape, dtype=torch.bool)
+                mask[list_index] = False
+                all_labels = all_labels[mask]
+                all_preds = all_preds[mask]
+                
             if not args.self_data:
                 metrics = dataset.post_loop_metrics(all_labels, all_preds,
                                                     all_metadata, args)

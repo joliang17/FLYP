@@ -45,12 +45,14 @@ class CsvDataset(Dataset):
                  list_selection=None,
                  ori_proportion=None,
                  return_guidance=False,
-                 return_img_id=False):
+                 return_img_id=False,
+                 only_img_id=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
         # for sample experiment, only sample few samples from training data
-        if return_img_id:
+        self.only_img_id = only_img_id
+        if self.only_img_id:
             # sort the df by img_id
             df = df[df['img_id'] != -1]
             # df = df.sample(n=10000, replace=False, ignore_index=True) 
@@ -548,7 +550,8 @@ def get_csv_dataset(args,
                     list_selection=None,
                     return_guidance=False,
                     ori_proportion=None,
-                    return_img_id=False):
+                    return_img_id=False,
+                    only_img_id=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -573,6 +576,7 @@ def get_csv_dataset(args,
                          list_selection=list_selection,
                          return_guidance=return_guidance,
                          return_img_id=return_img_id,
+                         only_img_id=only_img_id,
                          ori_proportion=ori_proportion, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
@@ -620,7 +624,8 @@ def get_data(args,
              epoch=0,
              guidance=None,
              list_selection=None,
-             ori_proportion=None):
+             ori_proportion=None,
+             return_img_id=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -630,6 +635,7 @@ def get_data(args,
                                                          is_train=True,
                                                          epoch=epoch,
                                                          guidance=guidance, list_selection=list_selection,
-                                                         ori_proportion=ori_proportion, )
+                                                         ori_proportion=ori_proportion, 
+                                                         return_img_id=return_img_id, )
 
     return data

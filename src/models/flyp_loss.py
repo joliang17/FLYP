@@ -80,9 +80,12 @@ def load_data(logger,
             if ori_proportion is not None:
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
+    return_img_id = False
+    if args.cluster == 'loss':
+        return_img_id = True
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-        guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion)
+        guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion, return_img_id=return_img_id)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -381,6 +384,7 @@ def flyp_loss(args,
 
     stats = []
     last_perform = {}
+    loss_pairs = []
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -413,107 +417,126 @@ def flyp_loss(args,
         model = model.cuda()
         classification_head.train()
 
-        if not args.test:
-            for i in trange(num_batches):
-                step = i + epoch * num_batches
-                optimizer.zero_grad()
+        for i in trange(num_batches):
+            if args.test:
+                logger.info(f"Skipping training process")
+                break
 
-                try:
-                    ft_batch = next(ft_iterator)
-                except StopIteration:
-                    ori_proportion = None
-                    if args.curriculum:
-                        if epoch > args.curriculum_epoch:
-                            cur_guidance = 100
-                            cur_guidance_id = list_guidance.index(cur_guidance)
-                            cur_str_times = 1
-                        else:
-                            if not args.progress:
-                                # sequentially use guidance 
-                                if args.curriculum_epoch is None:
-                                    cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance,
-                                                                                   cur_guidance_id=cur_guidance_id,
-                                                                                   ctype='no_curri')
-                                else:
-                                    cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
-                                                                                                  cur_guidance_id=cur_guidance_id,
-                                                                                                  cur_str_times=cur_str_times,
-                                                                                                  ctype='in_curri',
-                                                                                                  loop_times=loop_times)
+            step = i + epoch * num_batches
+            optimizer.zero_grad()
 
+            try:
+                ft_batch = next(ft_iterator)
+            except StopIteration:
+                ori_proportion = None
+                if args.curriculum:
+                    if epoch > args.curriculum_epoch:
+                        cur_guidance = 100
+                        cur_guidance_id = list_guidance.index(cur_guidance)
+                        cur_str_times = 1
+                    else:
+                        if not args.progress:
+                            # sequentially use guidance 
+                            if args.curriculum_epoch is None:
+                                cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance,
+                                                                                cur_guidance_id=cur_guidance_id,
+                                                                                ctype='no_curri')
                             else:
-                                # select guidance based on progress
-                                res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch,
-                                                                                 logger)
-                                list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                                list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                                largest_guid = list_progress[0]
-                                if args.explore:
-                                    # randomly select a guid with 15%, use the largest with 85%
-                                    rand_prob = random.uniform(0, 1)
-                                    if rand_prob <= 0.15:
-                                        next_guid = random.choice(list_progress)
-                                    else:
-                                        next_guid = largest_guid
+                                cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
+                                                                                                cur_guidance_id=cur_guidance_id,
+                                                                                                cur_str_times=cur_str_times,
+                                                                                                ctype='in_curri',
+                                                                                                loop_times=loop_times)
+
+                        else:
+                            # if find guidance on training samples
+                            # if args.cluster == 'loss':
+                            #     pdb.set_trace()
+                            #     print(loss_pairs)
+                                
+                            # select guidance based on progress
+                            res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch,
+                                                                                logger)
+                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                            largest_guid = list_progress[0]
+                            if args.explore:
+                                # randomly select a guid with 15%, use the largest with 85%
+                                rand_prob = random.uniform(0, 1)
+                                if rand_prob <= 0.15:
+                                    next_guid = random.choice(list_progress)
                                 else:
                                     next_guid = largest_guid
+                            else:
+                                next_guid = largest_guid
 
-                                cur_guidance = next_guid[0]
-                                cur_guidance_id = list_guidance.index(cur_guidance)
-                                cur_str_times = 0
+                            cur_guidance = next_guid[0]
+                            cur_guidance_id = list_guidance.index(cur_guidance)
+                            cur_str_times = 0
 
-                            if args.proportion:
-                                ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
+                        if args.proportion:
+                            ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
 
-                        # ori_proportion
-                        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                                  cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                                  ori_proportion=ori_proportion)
+                    # ori_proportion
+                    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
+                                                cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
+                                                ori_proportion=ori_proportion)
 
-                    ft_iterator = iter(ft_dataloader)
-                    ft_batch = next(ft_iterator)
+                ft_iterator = iter(ft_dataloader)
+                ft_batch = next(ft_iterator)
 
+            if args.cluster == 'loss':
+                ft_image, ft_text, ft_imgid = ft_batch
+            else:
                 ft_image, ft_text = ft_batch
-                ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
-                ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
-                ft_clip_loss = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
+            ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
-                ft_clip_loss.backward()
-                optimizer.step()
+            ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
+            ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
-                if args.scheduler == 'crestart':
-                    scheduler.step(epoch)
+            ft_clip_loss = torch.mean(ft_clip_loss_peritem)
+            ft_clip_loss.backward()
+            optimizer.step()
+
+            # add training loss for clustering
+            loss_array = ft_clip_loss_peritem.cpu().clone().detach().tolist()
+            imgid_array = ft_imgid.tolist()
+            cur_loss_pair = list(zip(imgid_array, loss_array))
+            loss_pairs.extend(cur_loss_pair)
+
+            if args.scheduler == 'crestart':
+                scheduler.step(epoch)
+            else:
+                scheduler(step)
+
+            id_flyp_loss_sum += ft_clip_loss.item()
+
+            # Training logging
+            if not args.debug:
+                if args.scheduler in ('default', 'drestart', 'default_slower'):
+                    lr = optimizer.param_groups[0]['lr']
+                elif args.scheduler in ('crestart',):
+                    lr = scheduler.get_lr()[0]
                 else:
-                    scheduler(step)
+                    lr = args.lr
 
-                id_flyp_loss_sum += ft_clip_loss.item()
+                wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
 
-                # Training logging
-                if not args.debug:
-                    if args.scheduler in ('default', 'drestart', 'default_slower'):
-                        lr = optimizer.param_groups[0]['lr']
-                    elif args.scheduler in ('crestart',):
-                        lr = scheduler.get_lr()[0]
-                    else:
-                        lr = args.lr
+            if i % print_every == 0:
+                percent_complete = 100 * i / num_batches
+                logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
+                            f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-                    wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
+            if args.ma_progress and (num_batches - i) % 100 == 0:
+                logger.info(f"Running progress evaluation for moving average with i={i}")
+                # calculate progress multiple times
+                _, _, _, cur_stats = progress_eval(model, args, last_perform, epoch, logger)
 
-                if i % print_every == 0:
-                    percent_complete = 100 * i / num_batches
-                    logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
-                                f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
-
-                if args.ma_progress and (num_batches - i) % 100 == 0:
-                    logger.info(f"Running progress evaluation for moving average with i={i}")
-                    # calculate progress multiple times
-                    _, _, _, cur_stats = progress_eval(model, args, last_perform, epoch, logger)
-
-                    for guid, value in cur_stats.items():
-                        if guid not in progress_ma:
-                            progress_ma[guid] = []
-                        progress_ma[guid].append(value)
+                for guid, value in cur_stats.items():
+                    if guid not in progress_ma:
+                        progress_ma[guid] = []
+                    progress_ma[guid].append(value)
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
@@ -530,16 +553,30 @@ def flyp_loss(args,
 
         #############################################
         # Find the best guidance for each img for current model
-        # if args.progress_train:
-        #     logger.info(f"Progress evaluation on training data ...")
-        #     dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-        #                                                      progress_ma=progress_ma)
-        #     dict_best_guid['Epoch'] = epoch
+        if args.progress_train:
+            logger.info(f"Progress evaluation on training data ...")
+            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+                                                             progress_ma=progress_ma)
+            dict_best_guid['Epoch'] = epoch
 
-        #     # save progress_ma:
-        #     with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
-        #         pickle.dump(dict_best_guid, f)
+            # save progress_ma:
+            with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
+                pickle.dump(dict_best_guid, f)
+            
+            if args.cluster == 'loss':
+                from sklearn.cluster import KMeans
+                import numpy as np
+                list_loss = [item[-1] for item in loss_pairs]
+                arr_loss = np.array(list_loss).reshape(-1, 1)
+                n_clusters = 7
+                kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(arr_loss)
+                arr_labels = kmeans.labels_
+                list_cluster_label = arr_labels.tolist()
+                new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
+                with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
+                    pickle.dump(new_loss_pair, f)
 
+            exit(0)
 
         #############################################
         # Evaluate progress on different group of cur_guidance for this epoch
