@@ -61,6 +61,8 @@ def main(args):
             threshold = 0.25
             Dict_filt = filter_img(clip_path, threshold)
 
+            all_cnt = 0
+            filtered_cnt = 0
             for cur_sp_f in img_sp_folder:
                 cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
                 cur_sp_name = cur_sp_f.replace('_', ' ')
@@ -78,10 +80,12 @@ def main(args):
                     for img_name in list_sub_img:
                         cur_img_path = os.path.join(cur_cate_path, img_name)
                         img_name = img_name.replace('.jpg', '')
+                        all_cnt += 1
                         if len(Dict_filt) > 0:
                             if cate in Dict_filt and cur_sp_f in Dict_filt[cate] and img_name.replace('.jpg', '') in \
                                     Dict_filt[cate][cur_sp_f]:
                                 list_result.append([cur_y, cur_img_path, cur_strength])
+                                filtered_cnt += 1
 
                         else:
                             list_result.append([cur_y, cur_img_path, cur_strength])

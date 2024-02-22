@@ -48,8 +48,6 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head,):
 
     with torch.no_grad():
         for i, data in tqdm(batched_data, total=len(dataloader)):
-            if i >= 100:
-                break
             data = maybe_dictionarize(data, progress_train=True)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
