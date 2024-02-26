@@ -207,8 +207,8 @@ def init_guidance_setting(args,
 
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
-        if args.cont_finetune:
-            df_ori = df_ori[df_ori['label'].isin(list_classes)]
+        # if args.cont_finetune:
+        #     df_ori = df_ori[df_ori['label'].isin(list_classes)]
 
         len_data = len(df_ori)
         list_guidance = list(set(df_ori['guidance'].values.tolist()))
@@ -282,13 +282,13 @@ def flyp_loss(args,
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
-        model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1",
-                                  f'checkpoint_19.pt')
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        # model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1",
+                                #   f'checkpoint_19.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        # model.load_state_dict(checkpoint)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)
+        # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -496,11 +496,12 @@ def flyp_loss(args,
             ft_clip_loss.backward()
             optimizer.step()
 
-            # add training loss for clustering
-            loss_array = ft_clip_loss_peritem.cpu().clone().detach().tolist()
-            imgid_array = ft_imgid.tolist()
-            cur_loss_pair = list(zip(imgid_array, loss_array))
-            loss_pairs.extend(cur_loss_pair)
+            if args.cluster == 'loss':
+                # add training loss for clustering
+                loss_array = ft_clip_loss_peritem.cpu().clone().detach().tolist()
+                imgid_array = ft_imgid.tolist()
+                cur_loss_pair = list(zip(imgid_array, loss_array))
+                loss_pairs.extend(cur_loss_pair)
 
             if args.scheduler == 'crestart':
                 scheduler.step(epoch)

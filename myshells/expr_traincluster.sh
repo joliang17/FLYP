@@ -3,7 +3,7 @@
 #SBATCH --job-name=flyp_loss_train_cluster
 #SBATCH --output=flyp_loss_train_cluster.out.%j
 #SBATCH --error=flyp_loss_train_cluster.out.%j
-#SBATCH --time=2:00:00
+#SBATCH --time=1:00:00
 #SBATCH --account=cml-zhou
 #SBATCH --partition=cml-dpart
 #SBATCH --qos=cml-medium

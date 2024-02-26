@@ -132,7 +132,7 @@ def eval_single_dataset(image_classifier,
         dict_preds = dict()
 
     list_index = None
-    if isinstance(dataset, IWildCamOOD):
+    if isinstance(dataset, IWildCamOOD) and not args.progress_train:
         import pickle
         with open(f"../data/analysis/test_used_id/all_index.pkl", 'rb') as f:
             list_index = pickle.load(f)
@@ -224,6 +224,7 @@ def eval_single_dataset(image_classifier,
                 all_metadata.extend(metadata)
 
         top1 = correct / n
+        # pdb.set_trace()
         if args.self_data or hasattr(dataset, 'post_loop_metrics'):
             all_labels = torch.cat(all_labels)
             all_preds = torch.cat(all_preds)
