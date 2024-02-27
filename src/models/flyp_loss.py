@@ -293,16 +293,16 @@ def flyp_loss(args,
     ############################
     # Data initialization
     list_classes = None
-    if args.cont_finetune:
-        df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv',
-                             delimiter='\t')
-        df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
-        # df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] <= 50)]
-        list_classes = df_filter['Unnamed: 0'].values.tolist()
-        list_classes = [int(item.replace('Class ', '')) for item in list_classes]
-        if 0 not in list_classes:
-            list_classes.append(0)
-        logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
+    # if args.cont_finetune:
+    #     df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv',
+    #                          delimiter='\t')
+    #     df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
+    #     # df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] <= 50)]
+    #     list_classes = df_filter['Unnamed: 0'].values.tolist()
+    #     list_classes = [int(item.replace('Class ', '')) for item in list_classes]
+    #     if 0 not in list_classes:
+    #         list_classes.append(0)
+    #     logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
 
     cur_str_times = 1
     start_epoch = 0

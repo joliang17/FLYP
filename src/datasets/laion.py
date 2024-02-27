@@ -54,7 +54,7 @@ class CsvDataset(Dataset):
         self.only_img_id = only_img_id
         if self.only_img_id:
             # sort the df by img_id
-            df = df[df['img_id'] != -1]
+            df = df[df['img_id'] >= 0]
             # df = df.sample(n=10000, replace=False, ignore_index=True) 
             df = df.sort_values(by='img_id', )
 

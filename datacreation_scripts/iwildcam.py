@@ -189,11 +189,17 @@ def main(args):
     df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength'])
     df.loc[:, 'guidance'] = df['strength'].apply(lambda x: 100 - int(x))
     df.loc[:, 'img_name'] = df['filename'].apply(lambda x: x.split('/')[-1].replace('.jpg', ''))
+
+    print('adding img id')
     # change img_name to int img_id
     df_count = df.groupby(['img_name']).count()['guidance']
-    list_guid_img_name = list(df_count[df_count > 2].index)  # largest 7715
+    list_guid_img_name = list(df_count[df_count > 1].index)  # largest 7715
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
-    df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -1)
+
+    list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  img id start from
+    Dict_img_id_ori = {list_ori_guid[i]: i+1 for i in range(len(list_ori_guid))}
+
+    df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
     if args.random:
         print(len(df))
