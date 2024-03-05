@@ -9,8 +9,7 @@ from typing import List, Dict
 from tqdm import tqdm
 
 
-def filter_img(clip_path: str,
-               threshold: float):
+def filter_img(clip_path: str, threshold: float):
     dict_filt = dict()
     if os.path.exists(clip_path):
         with open(clip_path, 'rb') as f:
@@ -30,8 +29,8 @@ def filter_img(clip_path: str,
             dict_filt[cur_cate][cur_sp].append(cur_imgid)
     return dict_filt
 
-def filter_img_topk(csv_path: str,
-               dict_filt: float):
+
+def filter_img_topk(csv_path: str, dict_filt: float):
     dict_filt_new = dict()
     if os.path.exists(csv_path):
         df_generate = pd.read_csv(csv_path)
@@ -49,9 +48,7 @@ def filter_img_topk(csv_path: str,
 
 
 def main(args):
-    iwildcam_template = [
-        lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."
-    ]
+    iwildcam_template = [lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."]
     if args.mode in ('train', 'curriculum'):
         # for training and curriculum progress evaluation
         label_to_name = pd.read_csv(args.label_file_ori)
@@ -60,10 +57,8 @@ def main(args):
         label_to_name = pd.read_csv(args.label_file_ori.replace('labels.csv', 'labels_new.csv'))
 
     label_to_name = label_to_name[label_to_name['y'] < 99999]
-    label_to_name['prompt1'] = label_to_name['english'].map(
-        iwildcam_template[0])
-    label_to_name['prompt2'] = label_to_name['english'].map(
-        iwildcam_template[1])
+    label_to_name['prompt1'] = label_to_name['english'].map(iwildcam_template[0])
+    label_to_name['prompt2'] = label_to_name['english'].map(iwildcam_template[1])
 
     sp_name = set(label_to_name['name'].values.tolist())
 
@@ -81,7 +76,6 @@ def main(args):
             if args.topk_hard:
                 topk_path = '../data/metadata/clip_progress_train_img/generate.csv'
                 Dict_filt = filter_img_topk(topk_path, Dict_filt)
-
 
             all_cnt = 0
             filtered_cnt = 0
@@ -219,7 +213,7 @@ def main(args):
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
 
     list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  img id start from
-    Dict_img_id_ori = {list_ori_guid[i]: i+1 for i in range(len(list_ori_guid))}
+    Dict_img_id_ori = {list_ori_guid[i]: i + 1 for i in range(len(list_ori_guid))}
 
     df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
@@ -259,18 +253,16 @@ def main(args):
     #     label_to_name.to_csv(new_path, index=False)
 
     # merge prompts
-    df1 = pd.merge(df, label_to_name[['y', 'prompt1']],
-                   on='y').rename({'prompt1': 'title'}, axis='columns')
-    df2 = pd.merge(df, label_to_name[['y', 'prompt2']],
-                   on='y').rename({'prompt2': 'title'}, axis='columns')
+    df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
+    df2 = pd.merge(df, label_to_name[['y', 'prompt2']], on='y').rename({'prompt2': 'title'}, axis='columns')
     df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
 
     del df1
     del df2
     del df
 
-    df_final = df_final.rename({'filename': 'filepath', 'y': 'label'},
-                               axis='columns')[['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
+    df_final = df_final.rename({'filename': 'filepath', 'y': 'label'}, axis='columns')[
+        ['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
 
     df_final.to_csv(os.path.join(args.save_folder, f'{args.mode}.csv'), sep='\t', index=False, header=True)
 
@@ -283,12 +275,9 @@ if __name__ == '__main__':
     parser.add_argument('--topk_hard', action=argparse.BooleanOptionalAction)
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--save_folder',
-                        default='./datasets/csv/iwildcam_v2.0/')
-    parser.add_argument('--input_folder',
-                        default='../data/train_new')
-    parser.add_argument('--label_file_ori',
-                        default='./src/datasets/iwildcam_metadata/labels.csv')
+    parser.add_argument('--save_folder', default='./datasets/csv/iwildcam_v2.0/')
+    parser.add_argument('--input_folder', default='../data/train_new')
+    parser.add_argument('--label_file_ori', default='./src/datasets/iwildcam_metadata/labels.csv')
     args = parser.parse_args()
 
     os.makedirs(args.save_folder, exist_ok=True)

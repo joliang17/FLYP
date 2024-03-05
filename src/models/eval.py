@@ -15,8 +15,7 @@ from src.datasets.iwildcam import IWildCamOOD
 import pdb
 
 
-def logging_input(curinput='',
-                  logger=None):
+def logging_input(curinput='', logger=None):
     if logger is not None:
         logger.info(curinput)
     else:
@@ -24,10 +23,7 @@ def logging_input(curinput='',
     return
 
 
-def process_train_stat(results,
-                       train_stats,
-                       logger,
-                       dataset_name=''):
+def process_train_stat(results, train_stats, logger, dataset_name=''):
     for key, val in results.items():
         if ('worst' in key or 'f1' in key.lower() or 'pm0' in key) and 'guidance' not in key.lower():
             logging_input(f"{dataset_name} {key}: {val:.4f}", logger)
@@ -35,9 +31,7 @@ def process_train_stat(results,
     return
 
 
-def eval_single_dataset_onTrain(image_classifier,
-                                args,
-                                classification_head, ):
+def eval_single_dataset_onTrain(image_classifier, args, classification_head, ):
     model = image_classifier
     input_key = 'images'
 
@@ -84,11 +78,7 @@ def eval_single_dataset_onTrain(image_classifier,
     return metrics
 
 
-def eval_single_dataset(image_classifier,
-                        dataset,
-                        args,
-                        classification_head,
-                        progress_eval=False, ):
+def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False, ):
 
     model = image_classifier
     input_key = 'images'
@@ -275,11 +265,7 @@ def eval_single_dataset(image_classifier,
     return metrics
 
 
-def eval_single_batch_dataset(image_classifier,
-                              dataset,
-                              args,
-                              classification_head,
-                              data):
+def eval_single_batch_dataset(image_classifier, dataset, args, classification_head, data):
 
     model = image_classifier
     input_key = 'images'
@@ -346,12 +332,7 @@ def eval_single_batch_dataset(image_classifier,
     return metrics['top1'], cnt_loss.item()
 
 
-def evaluate(image_classifier,
-             args,
-             classification_head,
-             train_stats={},
-             logger=None,
-             progress_eval=False,
+def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_eval=False,
              progress_train=False):
     if args.eval_datasets is None:
         return

@@ -27,11 +27,7 @@ import wandb
 import numpy as np
 
 
-def seq_curri_guid(list_guidance: List,
-                   cur_guidance_id=None,
-                   cur_str_times=None,
-                   ctype='out_curri',
-                   loop_times=1):
+def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
     # sequentially use guidance 
     if ctype == 'no_curri':
         # iteratively loop over all guidance
@@ -65,15 +61,8 @@ def seq_curri_guid(list_guidance: List,
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger,
-              args,
-              clip_encoder,
-              cur_guidance=None,
-              cur_str_times=1,
-              list_classes=None,
-              epoch=0,
-              ori_proportion=None,
-              uniform_set=False,):
+def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, list_classes=None, epoch=0,
+              ori_proportion=None, uniform_set=False, ):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -87,8 +76,7 @@ def load_data(logger,
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
-                             uniform_set=uniform_set,
-                             return_img_id=return_img_id)
+                             uniform_set=uniform_set, return_img_id=return_img_id)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -97,9 +85,7 @@ def load_data(logger,
     return ft_dataloader
 
 
-def generate_class_head(model,
-                        args,
-                        epoch):
+def generate_class_head(model, args, epoch):
     # get classification head embedding
     args.current_epoch = epoch
     classification_head_new = get_zeroshot_classifier(args, model.module.model)
@@ -107,12 +93,7 @@ def generate_class_head(model,
     return classification_head_new
 
 
-def progress_eval(model,
-                  args,
-                  last_perform,
-                  epoch,
-                  logger,
-                  progress_ma=None):
+def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
     last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True, )
@@ -152,11 +133,7 @@ def progress_eval(model,
     return res_progress, str_progress, last_perform, cur_stats
 
 
-def progress_eval_train(model,
-                        args,
-                        epoch,
-                        logger,
-                        progress_ma=None):
+def progress_eval_train(model, args, epoch, logger, progress_ma=None):
     """
     Evaluate the best guidance on training dataset for each image
 
@@ -197,9 +174,7 @@ def progress_eval_train(model,
     return dict_best_guid
 
 
-def init_guidance_setting(args,
-                          logger,
-                          list_classes=None, ):
+def init_guidance_setting(args, logger, list_classes=None, ):
     cur_guidance = None
     cur_guidance_id = 0
     len_data = None
@@ -257,10 +232,7 @@ def init_guidance_setting(args,
     return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori
 
 
-def flyp_loss(args,
-              clip_encoder,
-              classification_head,
-              logger):
+def flyp_loss(args, clip_encoder, classification_head, logger):
     model_path = ''
 
     assert args.train_dataset is not None, "Please provide a training dataset."
@@ -284,13 +256,13 @@ def flyp_loss(args,
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1", f'checkpoint_15.pt')
+        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
+                                  f'checkpoint_15.pt')
         # model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1",
-                                #   f'checkpoint_19.pt')
+        #   f'checkpoint_19.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)
-        # model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -477,7 +449,7 @@ def flyp_loss(args,
                                 # randomly select a guid with 15%, use the largest with 85%
                                 rand_prob = random.uniform(0, 1)
                                 if args.tau_curriculum:
-                                    tau_thres = 0.75  - 0.5 * epoch/args.curriculum_epoch
+                                    tau_thres = 0.75 - 0.5 * epoch / args.curriculum_epoch
                                 else:
                                     tau_thres = 0.15
                                 wandb.log({"Epoch": epoch, "tau": tau_thres, })
@@ -487,7 +459,7 @@ def flyp_loss(args,
                                     else:
                                         # choose guid from a fixed sequence of guid
                                         fix_guid = sorted(list_guidance, reverse=False)
-                                        fix_guid_id = int(epoch/args.curriculum_epoch * len(list_guidance))
+                                        fix_guid_id = int(epoch / args.curriculum_epoch * len(list_guidance))
                                         next_guid = [list_guidance[fix_guid_id], 0]
                                 else:
                                     next_guid = largest_guid
@@ -504,9 +476,8 @@ def flyp_loss(args,
 
                     # ori_proportion
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                            cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                            uniform_set=uniform_set,
-                                            ori_proportion=ori_proportion)
+                                              cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
+                                              uniform_set=uniform_set, ori_proportion=ori_proportion)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -586,17 +557,17 @@ def flyp_loss(args,
         #     dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
         #                                          progress_ma=progress_ma)
         #     dict_best_guid['Epoch'] = epoch
-        
+
         #     # save progress_ma:
         #     with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
         #         pickle.dump(dict_best_guid, f)
-        
+
         #     if args.cluster == 'loss':
         #         from sklearn.cluster import KMeans
         #         import numpy as np
         #         # each img id might have multiple loss value
         #         # reshape list loss to [loss1, loss2] for each image id
-                
+
         #         list_loss = [item[-1] for item in loss_pairs]
         #         arr_loss = np.array(list_loss).reshape(-1, 1)
         #         n_clusters = 7
@@ -606,7 +577,7 @@ def flyp_loss(args,
         #         new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
         #         with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
         #             pickle.dump(new_loss_pair, f)
-        
+
         #     exit(0)
         # #############################################
 
