@@ -76,6 +76,8 @@ def parse_arguments():
 
     parser.add_argument('--explore', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--random_guid', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--proportion', action=argparse.BooleanOptionalAction)
@@ -85,6 +87,8 @@ def parse_arguments():
     parser.add_argument('--tau_curriculum', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore_fixguid', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--uniform_set', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--scheduler', type=str, default='default', )
 

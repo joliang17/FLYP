@@ -72,7 +72,8 @@ def load_data(logger,
               cur_str_times=1,
               list_classes=None,
               epoch=0,
-              ori_proportion=None):
+              ori_proportion=None,
+              uniform_set=False,):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -86,6 +87,7 @@ def load_data(logger,
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
+                             uniform_set=uniform_set,
                              return_img_id=return_img_id)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -386,6 +388,7 @@ def flyp_loss(args,
     stats = []
     last_perform = {}
     loss_pairs = []
+    change_guid = False
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -430,6 +433,7 @@ def flyp_loss(args,
                 ft_batch = next(ft_iterator)
             except StopIteration:
                 ori_proportion = None
+                uniform_set = False
                 if args.curriculum and epoch > args.curriculum_epoch:
                     cur_guidance = 100
                     cur_guidance_id = list_guidance.index(cur_guidance)
@@ -446,40 +450,53 @@ def flyp_loss(args,
                                                                                       ctype='in_curri',
                                                                                       loop_times=loop_times)
                 elif args.curriculum and args.progress:
-                    # if find guidance on training samples
-                    # if args.cluster == 'loss':
-                    #     pdb.set_trace()
-                    #     print(loss_pairs)
-
-                    # select guidance based on progress
-                    res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
-                    list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                    list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                    largest_guid = list_progress[0]
-                    if args.explore:
-                        # randomly select a guid with 15%, use the largest with 85%
-                        rand_prob = random.uniform(0, 1)
-                        if args.tau_curriculum:
-                            tau_thres = 0.75  - 0.5 * epoch/args.curriculum_epoch
-                        else:
-                            tau_thres = 0.15
-                        wandb.log({"Epoch": epoch, "tau": tau_thres, })
-                        if rand_prob <= tau_thres:
-                            if not args.explore_fixguid:
-                                next_guid = random.choice(list_progress)
-                            else:
-                                # choose guid from a fixed sequence of guid
-                                fix_guid = sorted(list_guidance, reverse=False)
-                                fix_guid_id = int(epoch/args.curriculum_epoch * len(list_guidance))
-                                next_guid = [list_guidance[fix_guid_id], 0]
-                        else:
-                            next_guid = largest_guid
+                    if args.uniform_set and not change_guid:
+                        # run training on uniformly distributed dataset first
+                        cur_guidance = -1
+                        uniform_set = True
+                        change_guid = True
                     else:
-                        next_guid = largest_guid
+                        change_guid = False
+                        # if find guidance on training samples
+                        # if args.cluster == 'loss':
+                        #     pdb.set_trace()
+                        #     print(loss_pairs)
+                        if args.random_guid:
+                            next_guid = random.choice(list_guidance)
+                            logger.info(f"randomly select guid {next_guid}")
+                            next_guid = [next_guid, 0]
 
-                    cur_guidance = next_guid[0]
-                    cur_guidance_id = list_guidance.index(cur_guidance)
-                    cur_str_times = 0
+                        else:
+
+                            # select guidance based on progress
+                            res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
+                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                            largest_guid = list_progress[0]
+                            if args.explore:
+                                # randomly select a guid with 15%, use the largest with 85%
+                                rand_prob = random.uniform(0, 1)
+                                if args.tau_curriculum:
+                                    tau_thres = 0.75  - 0.5 * epoch/args.curriculum_epoch
+                                else:
+                                    tau_thres = 0.15
+                                wandb.log({"Epoch": epoch, "tau": tau_thres, })
+                                if rand_prob <= tau_thres:
+                                    if not args.explore_fixguid:
+                                        next_guid = random.choice(list_progress)
+                                    else:
+                                        # choose guid from a fixed sequence of guid
+                                        fix_guid = sorted(list_guidance, reverse=False)
+                                        fix_guid_id = int(epoch/args.curriculum_epoch * len(list_guidance))
+                                        next_guid = [list_guidance[fix_guid_id], 0]
+                                else:
+                                    next_guid = largest_guid
+                            else:
+                                next_guid = largest_guid
+
+                        cur_guidance = next_guid[0]
+                        cur_guidance_id = list_guidance.index(cur_guidance)
+                        cur_str_times = 0
 
                 if args.curriculum:
                     if args.proportion:
@@ -487,8 +504,9 @@ def flyp_loss(args,
 
                     # ori_proportion
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                              cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                              ori_proportion=ori_proportion)
+                                            cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
+                                            uniform_set=uniform_set,
+                                            ori_proportion=ori_proportion)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)

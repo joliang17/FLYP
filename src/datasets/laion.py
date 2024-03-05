@@ -44,11 +44,16 @@ class CsvDataset(Dataset):
                  datalimit=-1,
                  list_selection=None,
                  ori_proportion=None,
+                 uniform_set=False,
                  return_guidance=False,
                  return_img_id=False,
-                 only_img_id=False):
+                 only_img_id=False, ):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
+        
+        if uniform_set:
+            # only train on a uniformly distributed dataset
+            df = df.sample(n=10000, replace=False, ignore_index=True) 
 
         # for sample experiment, only sample few samples from training data
         self.only_img_id = only_img_id
@@ -548,8 +553,9 @@ def get_csv_dataset(args,
                     epoch=0,
                     guidance=None,
                     list_selection=None,
-                    return_guidance=False,
                     ori_proportion=None,
+                    uniform_set=False,
+                    return_guidance=False,
                     return_img_id=False,
                     only_img_id=False):
     # normal training / curriculum eval on test dataset
@@ -574,6 +580,7 @@ def get_csv_dataset(args,
                          guidance=guidance,
                          datalimit=args.datalimit, 
                          list_selection=list_selection,
+                         uniform_set=uniform_set,
                          return_guidance=return_guidance,
                          return_img_id=return_img_id,
                          only_img_id=only_img_id,
@@ -625,6 +632,7 @@ def get_data(args,
              guidance=None,
              list_selection=None,
              ori_proportion=None,
+             uniform_set=False,
              return_img_id=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
@@ -636,6 +644,7 @@ def get_data(args,
                                                          epoch=epoch,
                                                          guidance=guidance, list_selection=list_selection,
                                                          ori_proportion=ori_proportion, 
+                                                         uniform_set=uniform_set,
                                                          return_img_id=return_img_id, )
 
     return data
