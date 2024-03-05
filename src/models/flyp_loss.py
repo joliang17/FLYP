@@ -459,8 +459,19 @@ def flyp_loss(args,
                     if args.explore:
                         # randomly select a guid with 15%, use the largest with 85%
                         rand_prob = random.uniform(0, 1)
-                        if rand_prob <= 0.15:
-                            next_guid = random.choice(list_progress)
+                        if args.tau_curriculum:
+                            tau_thres = 0.75  - 0.5 * epoch/args.curriculum_epoch
+                        else:
+                            tau_thres = 0.15
+                        wandb.log({"Epoch": epoch, "tau": tau_thres, })
+                        if rand_prob <= tau_thres:
+                            if not args.explore_fixguid:
+                                next_guid = random.choice(list_progress)
+                            else:
+                                # choose guid from a fixed sequence of guid
+                                fix_guid = sorted(list_guidance, reverse=False)
+                                fix_guid_id = int(epoch/args.curriculum_epoch * len(list_guidance))
+                                next_guid = [list_guidance[fix_guid_id], 0]
                         else:
                             next_guid = largest_guid
                     else:
@@ -552,19 +563,22 @@ def flyp_loss(args,
 
         # #############################################
         # # Find the best guidance for each img for current model
-        # if args.progress_train:
+        # if args.progress_train and epoch >= 2:
         #     logger.info(f"Progress evaluation on training data ...")
         #     dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
         #                                          progress_ma=progress_ma)
         #     dict_best_guid['Epoch'] = epoch
-        #
+        
         #     # save progress_ma:
         #     with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
         #         pickle.dump(dict_best_guid, f)
-        #
+        
         #     if args.cluster == 'loss':
         #         from sklearn.cluster import KMeans
         #         import numpy as np
+        #         # each img id might have multiple loss value
+        #         # reshape list loss to [loss1, loss2] for each image id
+                
         #         list_loss = [item[-1] for item in loss_pairs]
         #         arr_loss = np.array(list_loss).reshape(-1, 1)
         #         n_clusters = 7
@@ -574,7 +588,7 @@ def flyp_loss(args,
         #         new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
         #         with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
         #             pickle.dump(new_loss_pair, f)
-        #
+        
         #     exit(0)
         # #############################################
 

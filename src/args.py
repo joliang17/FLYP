@@ -82,6 +82,10 @@ def parse_arguments():
 
     parser.add_argument('--test', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--tau_curriculum', action=argparse.BooleanOptionalAction)
+
+    parser.add_argument('--explore_fixguid', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--scheduler', type=str, default='default', )
 
     parser.add_argument('--datalimit', type=int, default=-1, )

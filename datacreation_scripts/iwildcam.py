@@ -30,6 +30,23 @@ def filter_img(clip_path: str,
             dict_filt[cur_cate][cur_sp].append(cur_imgid)
     return dict_filt
 
+def filter_img_topk(csv_path: str,
+               dict_filt: float):
+    dict_filt_new = dict()
+    if os.path.exists(csv_path):
+        df_generate = pd.read_csv(csv_path)
+        list_img_id = df_generate['img_name'].values.tolist()
+        set_img_id = set(list_img_id)
+
+        for cur_cate, dict_sub in dict_filt.items():
+            dict_filt_new[cur_cate] = dict()
+            for cur_sp, list_img in dict_sub.items():
+                dict_filt_new[cur_cate][cur_sp] = []
+                for img_id in list_img:
+                    if img_id in set_img_id:
+                        dict_filt_new[cur_cate][cur_sp].append(img_id)
+    return dict_filt_new
+
 
 def main(args):
     iwildcam_template = [
@@ -60,6 +77,11 @@ def main(args):
             clip_path = '../data/metadata/clip_score_train.pkl'
             threshold = 0.25
             Dict_filt = filter_img(clip_path, threshold)
+
+            if args.topk_hard:
+                topk_path = '../data/metadata/clip_progress_train_img/generate.csv'
+                Dict_filt = filter_img_topk(topk_path, Dict_filt)
+
 
             all_cnt = 0
             filtered_cnt = 0
@@ -258,6 +280,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--mode', default='train')
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--topk_hard', action=argparse.BooleanOptionalAction)
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
     parser.add_argument('--save_folder',
