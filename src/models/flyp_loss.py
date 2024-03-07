@@ -66,7 +66,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
-            wandb.log({"Epoch": epoch, "Image Guidance": cur_guidance})
+            wandb.log({"Epoch": epoch, "Image Guidance": cur_guidance if cur_guidance is not None else -1})
             if ori_proportion is not None:
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
@@ -424,7 +424,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 elif args.curriculum and args.progress:
                     if args.uniform_set and not change_guid:
                         # run training on uniformly distributed dataset first
-                        cur_guidance = -1
+                        cur_guidance = None
                         uniform_set = True
                         change_guid = True
                     else:

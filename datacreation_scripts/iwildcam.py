@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 def filter_img(clip_path: str, threshold: float):
     dict_filt = dict()
+    img_cnt = 0
     if os.path.exists(clip_path):
         with open(clip_path, 'rb') as f:
             dict_clip_res = pickle.load(f)
@@ -27,10 +28,12 @@ def filter_img(clip_path: str, threshold: float):
             if cur_sp not in dict_filt[cur_cate]:
                 dict_filt[cur_cate][cur_sp] = []
             dict_filt[cur_cate][cur_sp].append(cur_imgid)
-    return dict_filt
+            img_cnt += 1
+    return dict_filt, img_cnt
 
 
 def filter_img_topk(csv_path: str, dict_filt: float):
+    img_cnt = 0
     dict_filt_new = dict()
     if os.path.exists(csv_path):
         df_generate = pd.read_csv(csv_path)
@@ -44,7 +47,8 @@ def filter_img_topk(csv_path: str, dict_filt: float):
                 for img_id in list_img:
                     if img_id in set_img_id:
                         dict_filt_new[cur_cate][cur_sp].append(img_id)
-    return dict_filt_new
+                        img_cnt += 1
+    return dict_filt_new, img_cnt
 
 
 def main(args):
@@ -71,11 +75,11 @@ def main(args):
         if args.curriculum:
             clip_path = '../data/metadata/clip_score_train.pkl'
             threshold = 0.25
-            Dict_filt = filter_img(clip_path, threshold)
+            Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
             if args.topk_hard:
                 topk_path = '../data/metadata/clip_progress_train_img/generate.csv'
-                Dict_filt = filter_img_topk(topk_path, Dict_filt)
+                Dict_filt_1, img_cnt_1 = filter_img_topk(topk_path, Dict_filt)
 
             all_cnt = 0
             filtered_cnt = 0
@@ -275,10 +279,13 @@ if __name__ == '__main__':
     parser.add_argument('--topk_hard', action=argparse.BooleanOptionalAction)
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--save_folder', default='./datasets/csv/iwildcam_v2.0/')
+    parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
     parser.add_argument('--label_file_ori', default='./src/datasets/iwildcam_metadata/labels.csv')
     args = parser.parse_args()
+    args.topk_hard = True
+    args.total_train = True
+    args.curriculum = True
 
     os.makedirs(args.save_folder, exist_ok=True)
 
