@@ -424,9 +424,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 elif args.curriculum and args.progress:
                     if args.uniform_set and not change_guid:
                         # run training on uniformly distributed dataset first
+                        # evaluate the improvement on this uniformly distributed dataset
+                        # use the largest improvement as the next guid
                         cur_guidance = None
                         uniform_set = True
                         change_guid = True
+                        res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
                     else:
                         change_guid = False
                         # if find guidance on training samples
