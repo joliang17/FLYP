@@ -42,6 +42,7 @@ class CsvDataset(Dataset):
         if uniform_set:
             # only train on a uniformly distributed dataset
             df = df.sample(n=10000, replace=False, ignore_index=True)
+            logging.debug(f'sampling data {len(df)}.')
 
             # for sample experiment, only sample few samples from training data
         self.only_img_id = only_img_id

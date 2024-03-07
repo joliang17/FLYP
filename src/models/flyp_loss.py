@@ -66,7 +66,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
-            wandb.log({"Epoch": epoch, "Image Guidance": cur_guidance if cur_guidance is not None else -1})
+            wandb.log({"Epoch": epoch, "Image Guidance": cur_guidance})
             if ori_proportion is not None:
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
