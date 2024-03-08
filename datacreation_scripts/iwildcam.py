@@ -65,7 +65,7 @@ def filter_img_topk(csv_path: str, dict_filt: float):
                     if img_id in set_img_id:
                         dict_filt_new[cur_cate][cur_sp].append(img_id)
                         img_cnt += 1
-    return dict_filt_new, img_cnt
+    return dict_filt_new, img_cnt, len(set_img_id)
 
 
 def main(args):
@@ -96,7 +96,7 @@ def main(args):
 
             if args.topk_hard:
                 topk_path = '../data/metadata/clip_progress_difficult/generate_v2.csv'
-                Dict_filt_1, img_cnt_1 = filter_img_topk(topk_path, Dict_filt)
+                Dict_filt, img_cnt_1, uniq_cnt = filter_img_topk(topk_path, Dict_filt)
 
             all_cnt = 0
             filtered_cnt = 0
