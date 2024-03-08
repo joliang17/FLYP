@@ -149,7 +149,7 @@ def main(args):
         else:
             #############################################
             # if using all training data
-            df_train_ori = pd.read_csv('data/iwildcam/iwildcam_v2.0/train.csv', sep='\t')
+            df_train_ori = pd.read_csv('../data/iwildcam/iwildcam_v2.0/train.csv', sep='\t')
             del df_train_ori['title']
             df_train_ori.drop_duplicates(subset=['filepath', 'label'], keep='last', inplace=True)
             df_train_ori.rename({'filepath': 'filename', 'label': 'y'}, axis='columns', inplace=True)
