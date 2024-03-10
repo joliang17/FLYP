@@ -493,6 +493,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
+            logit_scale2 = logit_scale2[0]
             ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
             ft_clip_loss = torch.mean(ft_clip_loss_peritem)
