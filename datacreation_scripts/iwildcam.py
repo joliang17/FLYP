@@ -32,29 +32,12 @@ def filter_img(clip_path: str, threshold: float):
     return dict_filt, img_cnt
 
 
-def filter_img_topk(csv_path: str, dict_filt: float):
+def filter_generated_img(pkl_path: str, dict_filt: float):
     img_cnt = 0
     dict_filt_new = dict()
-    if os.path.exists(csv_path):
-        df_generate = pd.read_csv(csv_path)
-        list_img_id = df_generate['img_name'].values.tolist()
-        set_img_id = set(list_img_id)
-
-        # with open(clip_path, 'rb') as f:
-        #     dict_clip_res = pickle.load(f)
-        # list_filtered = list(dict_clip_res.items())
-        # list_filtered = [[item[0].split('='), item[1][0][0]] for item in
-        #                  list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
-        # list_topk = [item for item in list_filtered if item[0][2] in set_img_id]
-
-        # dict_img_cnt = dict()
-        # for item in list_topk:
-        #     img_id = item[0][2]
-        #     if img_id not in dict_img_cnt:
-        #         dict_img_cnt[img_id] = 0
-        #     dict_img_cnt[img_id] += 1
-
-        # list_missing = [item for item in set_img_id if item not in dict_img_cnt]
+    if os.path.exists(pkl_path):
+        with open(pkl_path, 'rb') as f:
+            set_img_id = pickle.load(f)
 
         dict_img_id = dict()
         for cur_cate, dict_sub in dict_filt.items():
@@ -94,9 +77,8 @@ def main(args):
             threshold = 0.25
             Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
-            if args.topk_hard:
-                topk_path = '../data/metadata/clip_progress_difficult/generate_v2.csv'
-                Dict_filt, img_cnt_1, uniq_cnt = filter_img_topk(topk_path, Dict_filt)
+            if args.gene_constr != '':
+                Dict_filt, img_cnt_1, uniq_cnt = filter_generated_img(args.gene_constr, Dict_filt)
 
             all_cnt = 0
             filtered_cnt = 0
@@ -293,14 +275,14 @@ if __name__ == '__main__':
 
     parser.add_argument('--mode', default='train')
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--topk_hard', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--gene_constr', default='')
     parser.add_argument('--random', action=argparse.BooleanOptionalAction)
     parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
     parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
     parser.add_argument('--label_file_ori', default='./src/datasets/iwildcam_metadata/labels.csv')
     args = parser.parse_args()
-    args.topk_hard = True
+    args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'
     args.total_train = True
     args.curriculum = True
 
