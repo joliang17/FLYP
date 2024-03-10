@@ -266,6 +266,7 @@ def main(args):
 
     df_final = df_final.rename({'filename': 'filepath', 'y': 'label'}, axis='columns')[
         ['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
+    print(f"length of final train.csv: {len(df_final)}")
 
     df_final.to_csv(os.path.join(args.save_folder, f'{args.mode}.csv'), sep='\t', index=False, header=True)
 
@@ -282,9 +283,9 @@ if __name__ == '__main__':
     parser.add_argument('--input_folder', default='../data/train_new')
     parser.add_argument('--label_file_ori', default='./src/datasets/iwildcam_metadata/labels.csv')
     args = parser.parse_args()
-    args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'
-    args.total_train = True
-    args.curriculum = True
+    # args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'
+    # args.total_train = True
+    # args.curriculum = True
 
     os.makedirs(args.save_folder, exist_ok=True)
 
