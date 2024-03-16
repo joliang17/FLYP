@@ -35,7 +35,7 @@ from open_clip import tokenize
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, ):
+                 return_img_id=False, only_img_id=False, progress_train=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
@@ -80,6 +80,10 @@ class CsvDataset(Dataset):
             df_other.sample(frac=0.2, replace=True)
             logging.info(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
             df = pd.concat([df, df_other])
+
+        if progress_train:
+            # select part of data based on each guidance
+            df = df.groupby('guidance').apply(lambda x: x.sample(n=1000)).reset_index(drop=True)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -457,7 +461,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
-                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False):
+                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False, progress_train=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -474,7 +478,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     dataset = CsvDataset(input_filename, preprocess_fn, img_key=args.csv_img_key, caption_key=args.csv_caption_key,
                          sep=args.csv_separator, label_key=label_key, guidance=guidance, datalimit=args.datalimit,
                          list_selection=list_selection, uniform_set=uniform_set, return_guidance=return_guidance,
-                         return_img_id=return_img_id, only_img_id=only_img_id, ori_proportion=ori_proportion, )
+                         return_img_id=return_img_id, only_img_id=only_img_id, ori_proportion=ori_proportion, progress_train=progress_train)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None

@@ -55,7 +55,7 @@ def main(args):
     iwildcam_template = [lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."]
     if args.mode in ('train', 'curriculum'):
         # for training and curriculum progress evaluation
-        label_to_name = pd.read_csv("./src/datasets/iwildcam_metadata/label.csv")
+        label_to_name = pd.read_csv("./src/datasets/iwildcam_metadata/labels.csv")
     else:
         # test data
         label_to_name = pd.read_csv("./src/datasets/iwildcam_metadata/labels_new.csv")
@@ -131,6 +131,7 @@ def main(args):
         else:
             #############################################
             # if using all training data
+
             df_train_ori = pd.read_csv(f'{args.data_folder}/data/iwildcam/iwildcam_v2.0/train.csv', sep='\t')
             del df_train_ori['title']
             df_train_ori.drop_duplicates(subset=['filepath', 'label'], keep='last', inplace=True)

@@ -90,7 +90,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if progress_eval:
         if args.progress_train:
             dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
-                                         return_guidance=True, return_img_id=True, only_img_id=True).dataloader
+                                         return_guidance=True, return_img_id=True, only_img_id=True, progress_train=True).dataloader
         else:
             dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
                                          return_guidance=True).dataloader

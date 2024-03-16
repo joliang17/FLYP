@@ -204,8 +204,9 @@ def init_guidance_setting(args, logger, list_classes=None, ):
             total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
             loop_times = math.ceil(total_viewing / len_all_guid)
 
-            # start from guidance = 0
+            # start from guidance = 100
             if cur_guidance is None:
+                # cur_guidance_id = len(list_guidance)-1
                 cur_guidance_id = 0
                 cur_guidance = list_guidance[cur_guidance_id]
 
@@ -459,15 +460,19 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 if rand_prob <= tau_thres:
                                     if not args.explore_fixguid:
                                         next_guid = random.choice(list_progress)
+                                        logger.info(f"Randomly select guid = {next_guid[0]}")
                                     else:
                                         # choose guid from a fixed sequence of guid
                                         fix_guid = sorted(list_guidance, reverse=False)
                                         fix_guid_id = int(epoch / args.curriculum_epoch * len(list_guidance))
                                         next_guid = [list_guidance[fix_guid_id], 0]
+                                        logger.info(f"Select from sequence guid = {next_guid[0]}")
                                 else:
                                     next_guid = largest_guid
+                                    logger.info(f"Select largest guid = {next_guid[0]}")
                             else:
                                 next_guid = largest_guid
+                                logger.info(f"Select largest guid = {next_guid[0]}")
 
                         cur_guidance = next_guid[0]
                         cur_guidance_id = list_guidance.index(cur_guidance)
