@@ -23,7 +23,7 @@ source /fs/nexus-scratch/yliang17/miniconda3/bin/activate diffu
 
 TRAIN_FOLDER="../data/train_new"
 TEST_FOLDER="../data/test"
-SAVED_FOLDER="../data/metadata/clip_progress_train/"
+SAVED_FOLDER="../data/metadata/clip_newcurri/"
 
 # python datacreation_scripts/iwildcam.py --mode="train" --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --total_train
 

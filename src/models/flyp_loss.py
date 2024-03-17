@@ -206,8 +206,8 @@ def init_guidance_setting(args, logger, list_classes=None, ):
 
             # start from guidance = 100
             if cur_guidance is None:
-                # cur_guidance_id = len(list_guidance)-1
-                cur_guidance_id = 0
+                cur_guidance_id = len(list_guidance)-1
+                # cur_guidance_id = 0
                 cur_guidance = list_guidance[cur_guidance_id]
 
     elif args.baseline:
