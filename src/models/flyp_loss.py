@@ -58,12 +58,12 @@ def seq_curri_guid(list_strength: List, cur_strength_id=None, cur_str_times=None
         raise ValueError(f"invalid ctype {ctype}")
 
 
-def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, ):
+def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, list_classes=None, epoch=0,):
 
     if cur_strength is not None:
         logger.info(f"loading image guidance = {100-cur_strength}, loop times {cur_str_times}")
         if not args.debug:
-            wandb.log({"Image Guidance": 100-cur_strength})
+            wandb.log({"Epoch": epoch, "Image Guidance": 100-cur_strength})
 
     # load dataloader
     img_text_data = get_data(
@@ -72,10 +72,12 @@ def load_data(logger, args, clip_encoder, cur_strength=None, cur_str_times=1, li
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
+    if not args.debug:
+        wandb.log({"Epoch": epoch, "Cur Dataloader Batch": len(ft_dataloader)})
     return ft_dataloader
 
 
-def generate_class_head(model, args):
+def generate_class_head(model, args, epoch):
     # get classification head embedding
     args.current_epoch = epoch
     classification_head_new = get_zeroshot_classifier(
@@ -105,7 +107,9 @@ def progress_eval(model, args, last_strength):
     return res_progress, str_progress, last_strength
 
 
-def flyp_loss_progress(args, clip_encoder, classification_head, logger):
+def flyp_loss(args, clip_encoder, classification_head, logger):
+    model_path = ''
+
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
     model = clip_encoder
@@ -183,6 +187,11 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
     model = torch.nn.DataParallel(model, device_ids=devices)
     classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
 
+    # init wandb if not debug mode
+    if not args.debug:
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.watch(model, log="gradients", log_freq=100)
+
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
         if args.cont_finetune:
@@ -219,7 +228,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         cur_strength_id = 0
         cur_strength = args.strength
 
-    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+    ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -229,11 +238,6 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
         else:
             num_batches = num_batch_ori
     logger.info(f"Num batches is {num_batches}")
-
-    # init wandb if not debug mode
-    if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
-        wandb.watch(model, log="gradients", log_freq=100)
 
     classification_head.train()
     model.train()
@@ -273,12 +277,13 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                 cur_strength = 0
                 cur_str_times = 1
 
-                ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+                ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
         logger.info(f"Epoch : {epoch}")
         epoch_stats = {}
+        epoch_stats['Epoch'] = epoch
         epoch_stats['epoch'] = epoch
 
         id_flyp_loss_sum = 0
@@ -314,7 +319,7 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
                         cur_strength_id = list_strength.index(cur_strength)
                         cur_str_times = 0
                     
-                    ft_dataloader = load_data(logger, args, clip_encoder, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+                    ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -340,16 +345,15 @@ def flyp_loss_progress(args, clip_encoder, classification_head, logger):
 
             # Training logging
             if not args.debug:
-                if args.scheduler in ('default', 'drestart'):
+                if args.scheduler in ('default', 'drestart', 'default_slower'):
                     lr = optimizer.param_groups[0]['lr']
-                elif args.scheduler in ('crestart', ):
+                elif args.scheduler in ('crestart',):
                     lr = scheduler.get_lr()[0]
                 else:
                     lr = args.lr
 
-                wandb.log({"Train Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item()})
-                wandb.log({"Learning Rate": lr, })
-                
+                wandb.log({"Epoch": epoch, "ID FLYP Loss": ft_clip_loss.item(), "Learning Rate": lr, })
+
             if i % print_every == 0:
                 percent_complete = 100 * i / num_batches
                 logger.info(
