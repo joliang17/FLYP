@@ -121,12 +121,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         dict_labels = dict()
         dict_preds = dict()
 
-    list_index = None
-    if isinstance(dataset, IWildCamOOD) and not args.progress_train:
-        import pickle
-        with open(f"../data/analysis/test_used_id/all_index.pkl", 'rb') as f:
-            list_index = pickle.load(f)
-
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
         dict_class = dict()
@@ -218,13 +212,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         if args.self_data or hasattr(dataset, 'post_loop_metrics'):
             all_labels = torch.cat(all_labels)
             all_preds = torch.cat(all_preds)
-
-            if list_index is not None:
-                # exclude test cases in validate set
-                mask = torch.ones(all_labels.shape, dtype=torch.bool)
-                mask[list_index] = False
-                all_labels = all_labels[mask]
-                all_preds = all_preds[mask]
 
             if not args.self_data:
                 metrics = dataset.post_loop_metrics(all_labels, all_preds, all_metadata, args)
