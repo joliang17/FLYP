@@ -455,18 +455,27 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                 if args.tau_curriculum:
                                     tau_thres = 0.75 - 0.5 * epoch / args.curriculum_epoch
                                 else:
-                                    tau_thres = 0.15
+                                    if not args.explore_fixguid:
+                                        tau_thres = 0.15
+                                    else:
+                                        tau_thres = 0.5
                                 wandb.log({"Epoch": epoch, "tau": tau_thres, })
                                 if rand_prob <= tau_thres:
                                     if not args.explore_fixguid:
                                         next_guid = random.choice(list_progress)
                                         logger.info(f"Randomly select guid = {next_guid[0]}")
                                     else:
+                                        #############################
                                         # choose guid from a fixed sequence of guid
-                                        fix_guid = sorted(list_guidance, reverse=False)
-                                        fix_guid_id = int(epoch / args.curriculum_epoch * len(list_guidance))
-                                        next_guid = [list_guidance[fix_guid_id], 0]
-                                        logger.info(f"Select from sequence guid = {next_guid[0]}")
+                                        # fix_guid = sorted(list_guidance, reverse=False)
+                                        # fix_guid_id = int(epoch / args.curriculum_epoch * len(list_guidance))
+                                        # next_guid = [list_guidance[fix_guid_id], 0]
+                                        # logger.info(f"Select from sequence guid = {next_guid[0]}")
+
+                                        #############################
+                                        # select 100 guid
+                                        next_guid = [100, 0]
+                                        logger.info(f"Select guid = {next_guid[0]}")
                                 else:
                                     next_guid = largest_guid
                                     logger.info(f"Select largest guid = {next_guid[0]}")
