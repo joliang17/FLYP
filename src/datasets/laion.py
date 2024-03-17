@@ -42,6 +42,7 @@ class CsvDataset(Dataset):
         if uniform_set:
             # only train on a uniformly distributed dataset
             df = df.sample(n=10000, replace=False, ignore_index=True)
+            # df = df.groupby('guidance').apply(lambda x: x.sample(n=1000)).reset_index(drop=True)
             logging.debug(f'sampling data {len(df)}.')
 
             # for sample experiment, only sample few samples from training data

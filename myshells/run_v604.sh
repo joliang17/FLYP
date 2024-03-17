@@ -1,15 +1,15 @@
 #!/bin/bash
 
-#SBATCH --job-name=v604
-#SBATCH --output=v604.out.%j
-#SBATCH --error=v604.out.%j
+#SBATCH --job-name=v604_2
+#SBATCH --output=v604_2.out.%j
+#SBATCH --error=v604_2.out.%j
 #SBATCH --time=48:00:00
-#SBATCH --account=cml-zhou
-#SBATCH --partition=cml-dpart
-#SBATCH --qos=cml-medium
-#SBATCH --gres=gpu:a100:1
-#SBATCH --cpus-per-task=6
+#SBATCH --account=scavenger 
+#SBATCH --partition=scavenger
+#SBATCH --gres=gpu:rtxa6000:1
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
+
 
 
 # checking gpu status
@@ -27,5 +27,5 @@ SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_4/"
 
 
 # uniformly distribution + no randomness + train from pretrain
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=256 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}train.csv" --csv-img-key filepath --csv-caption-key title --exp_name="flyp_loss_v604_2" --curriculum --curriculum_epoch=10 --progress_eval --progress_train --explore --scheduler=default --workers=4 --progress_metric="Acc" --progress --slurm_job_id=$SLURM_JOB_ID
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=200 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}train.csv" --csv-img-key filepath --csv-caption-key title --exp_name="flyp_loss_v604_2" --curriculum --curriculum_epoch=10 --progress_eval --progress_train --explore --scheduler=default --workers=4 --progress_metric="Acc" --progress --slurm_job_id=$SLURM_JOB_ID
 

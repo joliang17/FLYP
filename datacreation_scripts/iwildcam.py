@@ -131,6 +131,7 @@ def main(args):
         else:
             #############################################
             # if using all training data
+            print(f'generated data: {len(list_result)}')
 
             df_train_ori = pd.read_csv(f'{args.data_folder}/data/iwildcam/iwildcam_v2.0/train.csv', sep='\t')
             del df_train_ori['title']
@@ -140,6 +141,7 @@ def main(args):
             df_train_ori = df_train_ori[['y', 'filename', 'strength']]
             cur_train_ori = df_train_ori.values.tolist()
             list_result.extend(cur_train_ori)
+            print(f'Total data: {len(list_result)}')
 
     elif args.mode == 'curriculum':
         # for curriculum progress evaluation
