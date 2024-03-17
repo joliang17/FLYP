@@ -167,6 +167,8 @@ def parse_arguments():
 
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--baseline', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--scheduler', type=str, default='default',)
 
     parser.add_argument(

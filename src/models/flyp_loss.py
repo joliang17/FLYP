@@ -228,7 +228,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         cur_strength_id = 0
         cur_strength = args.strength
 
-    ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
+    # if args.baseline:
+    #     cur_strength = 0
+    #     cur_str_times = None
+
+    ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, cur_strength=cur_strength, cur_str_times=cur_str_times, list_classes=list_classes)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -390,7 +394,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #############################################
         # Evaluate
         logger.info(f"Formal evaluation ...")
-        classification_head_new = generate_class_head(model, args)
+        classification_head_new = generate_class_head(model, args, epoch=epoch)
         eval_results = evaluate(model, args, classification_head_new,
                                 epoch_stats, logger)
 
