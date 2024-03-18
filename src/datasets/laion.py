@@ -528,7 +528,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
+def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
              return_img_id=False, reshift_distribution=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
@@ -538,6 +538,7 @@ def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, 
                                                                        list_selection=list_selection,
                                                                        ori_proportion=ori_proportion,
                                                                        uniform_set=uniform_set,
+                                                                       logger=logger, 
                                                                        reshift_distribution=reshift_distribution,
                                                                        return_img_id=return_img_id, )
 
