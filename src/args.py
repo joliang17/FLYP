@@ -90,6 +90,8 @@ def parse_arguments():
 
     parser.add_argument('--uniform_set', action=argparse.BooleanOptionalAction)
 
+    parser.add_argument('--reshift_distribution', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--scheduler', type=str, default='default', )
 
     parser.add_argument('--datalimit', type=int, default=-1, )

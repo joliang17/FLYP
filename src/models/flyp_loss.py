@@ -62,7 +62,7 @@ def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, list_classes=None, epoch=0,
-              ori_proportion=None, uniform_set=False, ):
+              ori_proportion=None, uniform_set=False, reshift_distribution=False):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -76,7 +76,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
-                             uniform_set=uniform_set, return_img_id=return_img_id)
+                             uniform_set=uniform_set, return_img_id=return_img_id, reshift_distribution=reshift_distribution)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -407,6 +407,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             except StopIteration:
                 ori_proportion = None
                 uniform_set = False
+                reshift_distribution = False
                 if args.curriculum and epoch > args.curriculum_epoch:
                     cur_guidance = 100
                     cur_guidance_id = list_guidance.index(cur_guidance)
@@ -431,6 +432,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         uniform_set = True
                         change_guid = True
                         res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
+                    elif args.reshift_distribution and not change_guid:
+                        cur_guidance = 100
+                        reshift_distribution = True
+                        change_guid = True
+
                     else:
                         change_guid = False
                         # if find guidance on training samples
@@ -494,7 +500,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     # ori_proportion
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                               cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                              uniform_set=uniform_set, ori_proportion=ori_proportion)
+                                              uniform_set=uniform_set, ori_proportion=ori_proportion, reshift_distribution=reshift_distribution)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)

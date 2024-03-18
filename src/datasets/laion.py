@@ -35,9 +35,13 @@ from open_clip import tokenize
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, progress_train=False):
+                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
+
+        if reshift_distribution:
+            df = df[df['guidance'] == 100]
+            df = df.sample(n=10000, replace=False, ignore_index=True)
 
         if uniform_set:
             # only train on a uniformly distributed dataset
@@ -462,7 +466,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
-                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False, progress_train=False):
+                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -478,7 +482,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
 
     dataset = CsvDataset(input_filename, preprocess_fn, img_key=args.csv_img_key, caption_key=args.csv_caption_key,
                          sep=args.csv_separator, label_key=label_key, guidance=guidance, datalimit=args.datalimit,
-                         list_selection=list_selection, uniform_set=uniform_set, return_guidance=return_guidance,
+                         list_selection=list_selection, uniform_set=uniform_set, reshift_distribution=reshift_distribution, return_guidance=return_guidance,
                          return_img_id=return_img_id, only_img_id=only_img_id, ori_proportion=ori_proportion, progress_train=progress_train)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
@@ -512,7 +516,7 @@ def get_dataset_fn(data_path, dataset_type):
 
 
 def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
-             return_img_id=False):
+             return_img_id=False, reshift_distribution=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -521,6 +525,7 @@ def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, 
                                                                        list_selection=list_selection,
                                                                        ori_proportion=ori_proportion,
                                                                        uniform_set=uniform_set,
+                                                                       reshift_distribution=reshift_distribution,
                                                                        return_img_id=return_img_id, )
 
     return data
