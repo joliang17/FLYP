@@ -410,13 +410,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 elif args.curriculum and args.progress:
                     if args.uniform_set and not change_guid:
                         # not training progress eval to find the best guid
-                            # run training on uniformly distributed dataset first
-                            # evaluate the improvement on this uniformly distributed dataset
-                            # use the largest improvement as the next guid
-                            cur_guidance = None
-                            uniform_set = True
-                            change_guid = True
-                            res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
+                        # run training on uniformly distributed dataset first
+                        # evaluate the improvement on this uniformly distributed dataset
+                        # use the largest improvement as the next guid
+                        cur_guidance = None
+                        uniform_set = True
+                        change_guid = True
+                        res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
                     elif args.reshift_distribution and not change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
