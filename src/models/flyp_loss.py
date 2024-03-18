@@ -312,7 +312,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     # init wandb if not debug mode
     if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name, settings=wandb.Settings(start_method="thread"))
         wandb.watch(model, log="gradients", log_freq=100)
 
     init_data = init_guidance_setting(args, logger, list_classes=list_classes)
