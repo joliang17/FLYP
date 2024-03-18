@@ -132,6 +132,8 @@ def parse_arguments():
 
     parser.add_argument("--guidance", type=int, default=-1, help="Number of dataloader workers per GPU.")
 
+    parser.add_argument("--cache_folder", type=str, default='', help="Number of dataloader workers per GPU.")
+
     parser.add_argument("--slurm_job_id", type=int, default=-1, help="SLURM job id.")
 
     parsed_args = parser.parse_args()

@@ -312,7 +312,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     # init wandb if not debug mode
     if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name, start_method="fork"))
         wandb.watch(model, log="gradients", log_freq=100)
 
     init_data = init_guidance_setting(args, logger, list_classes=list_classes)
@@ -490,6 +490,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
+            logit_scale2 = logit_scale2[0]
             ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
             ft_clip_loss = torch.mean(ft_clip_loss_peritem)
