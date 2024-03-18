@@ -32,12 +32,26 @@ except ImportError:
 from open_clip import tokenize
 
 
+def logging_input(curinput='', logger=None):
+    if logger is not None:
+        logger.info(curinput)
+    else:
+        print(curinput)
+    return
+
+
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False):
-        logging.debug(f'Loading csv data from {input_filename}.')
+                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False, logger=None):
+        # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
+
+        ##########################
+        # mixture from original data * image guidance
+        df_ori = None
+        if ori_proportion is not None:
+            df_ori = df[df['guidance'] == 100]
 
         if reshift_distribution:
             df = df[df['guidance'] == 100]
@@ -47,7 +61,7 @@ class CsvDataset(Dataset):
             # only train on a uniformly distributed dataset
             # df = df.sample(n=10000, replace=False, ignore_index=True)
             df = df.groupby('guidance').apply(lambda x: x.sample(n=1000)).reset_index(drop=True)
-            logging.debug(f'sampling data {len(df)}.')
+            logging_input(f'sampling data {len(df)}.', logger)
 
             # for sample experiment, only sample few samples from training data
         self.only_img_id = only_img_id
@@ -56,11 +70,6 @@ class CsvDataset(Dataset):
             df = df[df['img_id'] >= 0]
             # df = df.sample(n=10000, replace=False, ignore_index=True) 
             df = df.sort_values(by='img_id', )
-
-        ##########################
-        # mixture from original data * image guidance
-        if ori_proportion is not None:
-            df_ori = df[df['guidance'] == 100]
 
         ##########################
         # only loading guidance
@@ -76,14 +85,15 @@ class CsvDataset(Dataset):
             num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
-            logging.info(f'Loading csv data from {input_filename}.')
+            logging_input(f'Concatted data {num_df} + {num_ori} = {len(df)}.', logger)
 
         if list_selection is not None:
             df = df[df['label'].isin(list_selection)]
             # add part of other classes data
             df_other = df[~df['label'].isin(list_selection)]
             df_other.sample(frac=0.2, replace=True)
-            logging.info(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
+            logging_input(f"Loading in classes data {len(df)}, out classes data {len(df_other)}", logger)
+
             df = pd.concat([df, df_other])
 
         if progress_train:
@@ -116,7 +126,7 @@ class CsvDataset(Dataset):
         self.transforms = transforms
 
         # self.classes = max(self.labels) + 1
-        logging.info(f'Loading data with length {len(self.images)}.')
+        logging_input(f'Loading data with length {len(self.images)}.', logger)
 
     def __len__(self):
         return len(self.captions)
@@ -245,7 +255,7 @@ def get_imagenet(args, preprocess_fns, split):
         sampler = None
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, num_workers=args.workers,
-        sampler=sampler, )
+                                             sampler=sampler, )
 
     return DataInfo(dataloader=dataloader, sampler=sampler)
 
@@ -405,17 +415,17 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     if is_train:
         if not resampled:
             pipeline.extend([detshuffle2(bufsize=_SHARD_SHUFFLE_SIZE, initial=_SHARD_SHUFFLE_INITIAL, seed=args.seed,
-                epoch=shared_epoch, ), wds.split_by_node, wds.split_by_worker, ])
-        pipeline.extend([# at this point, we have an iterator over the shards assigned to each worker at each node
+                                         epoch=shared_epoch, ), wds.split_by_node, wds.split_by_worker, ])
+        pipeline.extend([  # at this point, we have an iterator over the shards assigned to each worker at each node
             tarfile_to_samples_nothrow,  # wds.tarfile_to_samples(handler=log_and_continue),
             wds.shuffle(bufsize=_SAMPLE_SHUFFLE_SIZE, initial=_SAMPLE_SHUFFLE_INITIAL, ), ])
     else:
         pipeline.extend(
-            [wds.split_by_worker, # at this point, we have an iterator over the shards assigned to each worker
-                wds.tarfile_to_samples(handler=log_and_continue), ])
+            [wds.split_by_worker,  # at this point, we have an iterator over the shards assigned to each worker
+             wds.tarfile_to_samples(handler=log_and_continue), ])
     pipeline.extend([wds.select(filter_no_caption), wds.decode("pilrgb", handler=log_and_continue),
-        wds.rename(image="jpg;png", text="txt"), wds.map_dict(image=preprocess_img, text=preprocess_txt),
-        wds.to_tuple("image", "text"), wds.batched(args.batch_size, partial=not is_train), ])
+                     wds.rename(image="jpg;png", text="txt"), wds.map_dict(image=preprocess_img, text=preprocess_txt),
+                     wds.to_tuple("image", "text"), wds.batched(args.batch_size, partial=not is_train), ])
 
     dataset = wds.DataPipeline(*pipeline)
     # import pdb;pdb.set_trace()
@@ -442,7 +452,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
         num_batches = math.ceil(num_samples / args.batch_size)
 
     dataloader = wds.WebLoader(dataset, batch_size=None, shuffle=False, num_workers=args.workers,
-        persistent_workers=True, )
+                               persistent_workers=True, )
 
     # FIXME not clear which approach is better, with_epoch before vs after dataloader?
     # hoping to resolve via https://github.com/webdataset/webdataset/issues/169
@@ -466,7 +476,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
-                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False):
+                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False,
+                    progress_train=False, reshift_distribution=False, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -480,17 +491,19 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     if not is_train:
         label_key = 'label'
 
-    dataset = CsvDataset(input_filename, preprocess_fn, img_key=args.csv_img_key, caption_key=args.csv_caption_key,
-                         sep=args.csv_separator, label_key=label_key, guidance=guidance, datalimit=args.datalimit,
-                         list_selection=list_selection, uniform_set=uniform_set, reshift_distribution=reshift_distribution, return_guidance=return_guidance,
-                         return_img_id=return_img_id, only_img_id=only_img_id, ori_proportion=ori_proportion, progress_train=progress_train)
+    dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
+                         caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
+                         guidance=guidance, datalimit=args.datalimit, list_selection=list_selection,
+                         uniform_set=uniform_set, reshift_distribution=reshift_distribution,
+                         return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
+                         ori_proportion=ori_proportion, progress_train=progress_train, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
     shuffle = is_train and sampler is None
 
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=shuffle, num_workers=args.workers,
-        pin_memory=True, sampler=sampler, drop_last=False, )
+                            pin_memory=True, sampler=sampler, drop_last=False, )
     dataloader.num_samples = num_samples
     dataloader.num_batches = len(dataloader)
     # dataloader.num_classes = dataset.classes

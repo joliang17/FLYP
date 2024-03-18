@@ -31,7 +31,7 @@ def process_train_stat(results, train_stats, logger, dataset_name=''):
     return
 
 
-def eval_single_dataset_onTrain(image_classifier, args, classification_head, ):
+def eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=None):
     model = image_classifier
     input_key = 'images'
 
@@ -39,7 +39,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, ):
     classification_head.eval()
 
     dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True,
-                                 return_img_id=True, only_img_id=True).dataloader
+                                 return_img_id=True, only_img_id=True, logger=logger).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -78,7 +78,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, ):
     return metrics
 
 
-def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False, ):
+def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False, logger=None):
 
     model = image_classifier
     input_key = 'images'
@@ -89,10 +89,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if progress_eval:
         if args.progress_train:
-            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
+            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
                                          return_guidance=True, return_img_id=True, only_img_id=True, progress_train=True).dataloader
         else:
-            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False,
+            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
                                          return_guidance=True).dataloader
 
 
@@ -108,7 +108,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             index_dog = 79
             index_cat = 66
     else:
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, ).dataloader
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False, ).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -328,7 +328,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
     if progress_train:
         # Evaluate the best guidance on training dataset for each image
         logging_input(f"Evaluating on training dataset", logger)
-        results = eval_single_dataset_onTrain(image_classifier, args, classification_head, )
+        results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
 
         train_stats[f"Best Guid per Image"] = results['best_guid']
         return info
@@ -337,7 +337,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
         # load specific curriculum data and evaluate performance on group of guidance
         logging_input(f"Evaluating on curriculum evaluation dataset", logger)
         dataset = None
-        results = eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=True)
+        results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger, progress_eval=True)
         if 'guidance_f1' in results:
             dict_guidance_f1 = results['guidance_f1']
             list_acc = [[key, value] for key, value in dict_guidance_f1.items()]

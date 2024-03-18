@@ -76,7 +76,8 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
-                             uniform_set=uniform_set, return_img_id=return_img_id, reshift_distribution=reshift_distribution)
+                             uniform_set=uniform_set, return_img_id=return_img_id,
+                             reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -96,7 +97,7 @@ def generate_class_head(model, args, epoch):
 def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger, progress_eval=True, )
+    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_eval=True, )
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
@@ -147,7 +148,7 @@ def progress_eval_train(model, args, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
 
     dict_guid_prob = {}
-    _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger, progress_train=True)
+    _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger=logger, progress_train=True)
 
     dict_best_guid = dict()
     for img_id, list_guid_prob in dict_guid_prob['Best Guid per Image'].items():
@@ -181,34 +182,34 @@ def init_guidance_setting(args, logger, list_classes=None, ):
     loop_times = 1
     list_guidance = None
     num_batch_ori = None
+    ori_proportion = None
 
     if args.curriculum:
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
-        # if args.cont_finetune:
-        #     df_ori = df_ori[df_ori['label'].isin(list_classes)]
 
         len_data = len(df_ori)
         list_guidance = list(set(df_ori['guidance'].values.tolist()))
         list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
         if args.curriculum_epoch is None:
-            if cur_guidance is None:
-                # start from guidance = 0
-                cur_guidance_id = 0
-                cur_guidance = list_guidance[cur_guidance_id]
+            # start from guidance = 0
+            cur_guidance_id = 0
+            cur_guidance = list_guidance[cur_guidance_id]
         else:
             # using curriculum_epoch to decide the current guidance
             # finish viewing all guidance data during curriculum_epoch
             len_ori = len(df_ori[df_ori['guidance'] == 100])
             num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+            # keep number of iteration during the entire training process the same
+            total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
+
+            # estimate the number of times loading for each guid
             len_all_guid = len(df_ori[df_ori['guidance'] != 100])
-            total_viewing = num_batch_ori * args.curriculum_epoch * args.batch_size
-            loop_times = math.ceil(total_viewing / len_all_guid)
+            loop_times = math.ceil(total_iteration / len_all_guid)
 
             # start from guidance = 100
-            if cur_guidance is None:
-                cur_guidance_id = len(list_guidance)-1
-                # cur_guidance_id = 0
-                cur_guidance = list_guidance[cur_guidance_id]
+            cur_guidance_id = len(list_guidance) - 1
+            # cur_guidance_id = 0
+            cur_guidance = list_guidance[cur_guidance_id]
 
     elif args.baseline:
         # train baseline with img guidance = 100
@@ -217,6 +218,7 @@ def init_guidance_setting(args, logger, list_classes=None, ):
         cur_guidance_id = 0
 
     if args.guidance != -1:
+        # for single guidance training
         df_ori = pd.read_csv(args.ft_data, delimiter='\t')
         df_ori = df_ori[df_ori['guidance'] == args.guidance]
         len_data = len(df_ori)
@@ -230,7 +232,11 @@ def init_guidance_setting(args, logger, list_classes=None, ):
         cur_guidance_id = 0
         cur_guidance = args.guidance
 
-    return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori
+    if args.proportion:
+        # mix guid=100 with other guidance data
+        ori_proportion = 0.1
+
+    return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion
 
 
 def flyp_loss(args, clip_encoder, classification_head, logger):
@@ -260,7 +266,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
                                   f'checkpoint_15.pt')
         # model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1",
-        #   f'checkpoint_19.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
@@ -268,26 +273,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # Data initialization
     list_classes = None
-    # if args.cont_finetune:
-    #     df_acc = pd.read_csv('expt_logs/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/class_stats15.tsv',
-    #                          delimiter='\t')
-    #     df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] >= 50)]
-    #     # df_filter = df_acc[(df_acc['IWildCamOOD'] <= 0.5) & (df_acc['IWildCamOOD Count'] <= 50)]
-    #     list_classes = df_filter['Unnamed: 0'].values.tolist()
-    #     list_classes = [int(item.replace('Class ', '')) for item in list_classes]
-    #     if 0 not in list_classes:
-    #         list_classes.append(0)
-    #     logger.info(f"Only continuing finetune ckpt based on {len(list_classes)} classes: {list_classes}")
 
     cur_str_times = 1
     start_epoch = 0
 
     dataset_class = getattr(datasets, args.train_dataset)
     logger.info(f"Training dataset {args.train_dataset}")
-
-    # dataset = dataset_class(preprocess_fn,
-    #                         location=args.data_location,
-    #                         batch_size=args.batch_size)
 
     # # ############################
     # # # Based on breakpoint to keep training
@@ -317,11 +308,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.watch(model, log="gradients", log_freq=100)
 
     init_data = init_guidance_setting(args, logger, list_classes=list_classes)
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori = init_data
-
-    ori_proportion = None
-    if args.proportion:
-        ori_proportion = 0.1
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
 
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
                               list_classes=list_classes, epoch=0, ori_proportion=ori_proportion)
@@ -373,12 +360,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             if cur_guidance != 0:
                 logger.info('Restart dataloader')
                 cur_guidance = 100
-                cur_guidance_id = list_guidance.index(cur_guidance)
-                cur_str_times = 1
 
                 ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                          cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                          ori_proportion=None)
+                                          list_classes=list_classes, epoch=epoch, )
                 ft_iterator = iter(ft_dataloader)
                 num_batches = len(ft_dataloader)
 
@@ -424,19 +408,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                                                       ctype='in_curri',
                                                                                       loop_times=loop_times)
                 elif args.curriculum and args.progress:
-                    if args.uniform_set and not change_guid:
-                        # run training on uniformly distributed dataset first
-                        # evaluate the improvement on this uniformly distributed dataset
-                        # use the largest improvement as the next guid
-                        cur_guidance = None
-                        uniform_set = True
-                        change_guid = True
-                        res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
-                    elif args.reshift_distribution and not change_guid:
-                        cur_guidance = 100
-                        reshift_distribution = True
-                        change_guid = True
-
+                    if not change_guid:
+                        # not training progress eval to find the best guid
+                        if args.uniform_set:
+                            # run training on uniformly distributed dataset first
+                            # evaluate the improvement on this uniformly distributed dataset
+                            # use the largest improvement as the next guid
+                            cur_guidance = None
+                            uniform_set = True
+                            change_guid = True
+                            res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
+                        elif args.reshift_distribution:
+                            # run training on guid=100 dataset first
+                            cur_guidance = 100
+                            reshift_distribution = True
+                            change_guid = True
                     else:
                         change_guid = False
                         # if find guidance on training samples
@@ -449,7 +435,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             next_guid = [next_guid, 0]
 
                         else:
-
                             # select guidance based on progress
                             res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
                             list_progress = [(guid, prog) for guid, prog in res_progress.items()]
@@ -466,6 +451,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                     else:
                                         tau_thres = 0.5
                                 wandb.log({"Epoch": epoch, "tau": tau_thres, })
+
                                 if rand_prob <= tau_thres:
                                     if not args.explore_fixguid:
                                         next_guid = random.choice(list_progress)
@@ -493,14 +479,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id = list_guidance.index(cur_guidance)
                         cur_str_times = 0
 
-                if args.curriculum:
                     if args.proportion:
-                        ori_proportion = 1 / args.curriculum_epoch * epoch  # cur_str_times = loop_times
+                        ori_proportion = 1 / args.curriculum_epoch * epoch
 
                     # ori_proportion
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                               cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                              uniform_set=uniform_set, ori_proportion=ori_proportion, reshift_distribution=reshift_distribution)
+                                              uniform_set=uniform_set, ori_proportion=ori_proportion,
+                                              reshift_distribution=reshift_distribution)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -626,7 +612,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Evaluate
         logger.info(f"Formal evaluation ...")
         classification_head_new = generate_class_head(model, args, epoch)
-        eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger)
+        eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
 
         ood_acc = 0
         num_datasets = 0
