@@ -66,11 +66,9 @@ def parse_arguments():
 
     parser.add_argument('--cont_finetune', action=argparse.BooleanOptionalAction)
 
-    parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--progress_guid', action=argparse.BooleanOptionalAction)
 
-    parser.add_argument('--progress_train', action=argparse.BooleanOptionalAction)
-
-    parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--progress_sample', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--progress_validation', action=argparse.BooleanOptionalAction)
 

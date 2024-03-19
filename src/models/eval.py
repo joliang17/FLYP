@@ -38,8 +38,8 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     model.eval()
     classification_head.eval()
 
-    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True,
-                                 return_img_id=True, only_img_id=True, logger=logger).dataloader
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, guidance=100, return_guidance=True,
+                                 return_img_id=True, logger=logger).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -48,7 +48,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
 
     with torch.no_grad():
         for i, data in tqdm(batched_data, total=len(dataloader)):
-            data = maybe_dictionarize(data, progress_train=True)
+            data = maybe_dictionarize(data, progress_guid=True)
             x = data[input_key].to(device)
             y = data['labels'].to(device)
             guidances = data['guidance'].to(device)
@@ -61,11 +61,13 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
             for i, img_id_t in enumerate(img_ids):
                 img_id = img_id_t.item()
                 cur_label = y[i].item()
+                pdb.set_trace()
+                cur_probs = all_prob[i].detach().cpu().numpy()
                 cur_prob = all_prob[i, cur_label].item()
                 cur_guid = guidances[i].item()
                 if img_id not in dict_preds:
                     dict_preds[img_id] = []
-                dict_preds[img_id].append([cur_guid, cur_prob])
+                dict_preds[img_id].append([cur_guid, cur_prob, cur_probs])
 
     metrics = {}
     # dict_best_guid = dict()
@@ -78,7 +80,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     return metrics
 
 
-def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_eval=False, logger=None):
+def eval_single_dataset(image_classifier, dataset, args, classification_head, progress_guid=False, logger=None):
 
     model = image_classifier
     input_key = 'images'
@@ -87,13 +89,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     model.eval()
     classification_head.eval()
 
-    if progress_eval:
-        if args.progress_train:
-            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                         return_guidance=True, return_img_id=True, only_img_id=True, progress_train=True).dataloader
-        else:
-            dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                         return_guidance=True).dataloader
+    if progress_guid:
+        # run on part of training data & only pos samples
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False, only_img_id=True, uniform_guid=True, 
+                                        return_guidance=True, return_img_id=True, ).dataloader
 
     else:
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False, ).dataloader
@@ -105,7 +104,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
 
-    if progress_eval:
+    if progress_guid:
         dict_labels = dict()
         dict_preds = dict()
 
@@ -114,10 +113,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         dict_class = dict()
         dict_guidance = dict()
         for i, data in batched_data:
-            if args.progress_train:
-                data = maybe_dictionarize(data, progress_train=True)
-            else:
-                data = maybe_dictionarize(data, progress_eval=progress_eval)
+            data = maybe_dictionarize(data, progress_guid=progress_guid)
 
             x = data[input_key].to(device)
             y = data['labels'].to(device)
@@ -137,14 +133,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             if hasattr(dataset, 'project_labels'):
                 y = dataset.project_labels(y, device)
             pred = logits.argmax(dim=1, keepdim=True).to(device)
-
-            ## for oxfordpet dataset
-            if getattr(dataset, 'index_cat', None) is not None:
-                y_new = torch.ones_like(y) * index_cat
-                for i in range(len(y)):
-                    if y[i] not in list_index_cat:
-                        y_new[i] = index_dog
-                y = y_new  # pdb.set_trace()
 
             if hasattr(dataset, 'accuracy'):
                 acc1, num_total = dataset.accuracy(logits, y, image_paths, args)
@@ -167,9 +155,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_class[cls_i][0] += cur_correct
                     dict_class[cls_i][1] += cur_num
 
-                if progress_eval and args.progress_train:
+                if progress_guid:
                     guidances = torch.unique(guidance)
                     for guid_i in guidances:
+                        pdb.set_trace()
                         guid_i = guid_i.item()
                         sap_ids = (guidance == guid_i).nonzero(as_tuple=True)
                         cur_pred = pred[sap_ids]
@@ -208,7 +197,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         else:
             metrics = {}
 
-    if progress_eval:
+    if progress_guid:
         dict_guidance_f1 = dict()
         for guid_i in dict_labels.keys():
             cur_str_labels = dict_labels[guid_i]
@@ -300,13 +289,12 @@ def eval_single_batch_dataset(image_classifier, dataset, args, classification_he
     return metrics['top1'], cnt_loss.item()
 
 
-def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_eval=False,
-             progress_train=False):
+def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False, progress_sample=False):
     if args.eval_datasets is None:
         return
     info = vars(args)
 
-    if progress_train:
+    if progress_sample:
         # Evaluate the best guidance on training dataset for each image
         logging_input(f"Evaluating on training dataset", logger)
         results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
@@ -314,11 +302,11 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
         train_stats[f"Best Guid per Image"] = results['best_guid']
         return info
 
-    if progress_eval:
+    if progress_guid:
         # load specific curriculum data and evaluate performance on group of guidance
         logging_input(f"Evaluating on curriculum evaluation dataset", logger)
         dataset = None
-        results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger, progress_eval=True)
+        results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger, progress_guid=True, )
         if 'guidance_f1' in results:
             dict_guidance_f1 = results['guidance_f1']
             list_acc = [[key, value] for key, value in dict_guidance_f1.items()]
@@ -341,27 +329,28 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
         return info
 
-    for i, dataset_name in enumerate(args.eval_datasets):
-        logging_input(f"Evaluating on {dataset_name}", logger)
+    else:
+        for i, dataset_name in enumerate(args.eval_datasets):
+            logging_input(f"Evaluating on {dataset_name}", logger)
 
-        dataset_class = getattr(datasets, dataset_name)
-        dataset = dataset_class(image_classifier.module.val_preprocess, location=args.data_location,
-                                batch_size=args.batch_size)
+            dataset_class = getattr(datasets, dataset_name)
+            dataset = dataset_class(image_classifier.module.val_preprocess, location=args.data_location,
+                                    batch_size=args.batch_size)
 
-        results = eval_single_dataset(image_classifier, dataset, args, classification_head)
+            results = eval_single_dataset(image_classifier, dataset, args, classification_head)
 
-        if 'top1' in results:
-            logging_input(f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}", logger)
-            train_stats[dataset_name + " Accuracy"] = round(results['top1'], 4)
+            if 'top1' in results:
+                logging_input(f"{dataset_name} Top-1 accuracy: {results['top1']:.4f}", logger)
+                train_stats[dataset_name + " Accuracy"] = round(results['top1'], 4)
 
-        if 'class_top1' in results:
-            list_acc = [[key, value[0] / value[1], value[1]] for key, value in results['class_top1'].items()]
-            list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
-            for pair in list_acc:
-                # logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
-                train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
-                train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
+            if 'class_top1' in results:
+                list_acc = [[key, value[0] / value[1], value[1]] for key, value in results['class_top1'].items()]
+                list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
+                for pair in list_acc:
+                    # logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
+                    train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
+                    train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
-        process_train_stat(results, train_stats, logger, dataset_name)
+            process_train_stat(results, train_stats, logger, dataset_name)
 
-    return info
+        return info

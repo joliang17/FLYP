@@ -42,8 +42,8 @@ def logging_input(curinput='', logger=None):
 
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
-                 datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False, include_neg=False,logger=None):
+                 datalimit=-1, list_selection=None, ori_proportion=None, uniform_guid=False, return_guidance=False,
+                 return_img_id=False, only_img_id=False, reshift_distribution=False, include_neg=False,logger=None):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
         df_pos = df[df['label'] != 0]
@@ -59,8 +59,17 @@ class CsvDataset(Dataset):
         if reshift_distribution:
             df = df[df['guidance'] == 100]
             df = df.sample(n=10000, replace=False, ignore_index=True)
+        
+        # for sample experiment, only sample few samples from training data
+        self.only_img_id = only_img_id
+        if self.only_img_id:
+            # sort the df by img_id
+            # generated img only here
+            df = df[df['img_id'] >= 0]
+            # df = df.sample(n=10000, replace=False, ignore_index=True) 
+            df = df.sort_values(by='img_id', )
 
-        if uniform_set:
+        if uniform_guid:
             # only train on a uniformly distributed dataset
             # df = df.sample(n=10000, replace=False, ignore_index=True)
             # method1 :
@@ -75,14 +84,7 @@ class CsvDataset(Dataset):
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
-        # for sample experiment, only sample few samples from training data
-        self.only_img_id = only_img_id
-        if self.only_img_id:
-            # sort the df by img_id
-            # generated img only here
-            df = df[df['img_id'] >= 0]
-            # df = df.sample(n=10000, replace=False, ignore_index=True) 
-            df = df.sort_values(by='img_id', )
+
 
         ##########################
         # only loading guidance
@@ -117,10 +119,6 @@ class CsvDataset(Dataset):
 
             df = pd.concat([df, df_other])
 
-        if progress_train:
-            # select part of data based on each guidance
-            df = df.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
-
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
         title_col = [item for item in df.columns if caption_key in item]
@@ -148,6 +146,7 @@ class CsvDataset(Dataset):
 
         # self.classes = max(self.labels) + 1
         logging_input(f'Loading data with length {len(self.images)}.', logger)
+        pdb.set_trace()
 
     def __len__(self):
         return len(self.captions)
@@ -497,8 +496,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
-                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False,
-                    progress_train=False, reshift_distribution=False, include_neg=False, logger=None):
+                    uniform_guid=False, return_guidance=False, return_img_id=False, only_img_id=False,
+                    reshift_distribution=False, include_neg=False, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -515,9 +514,9 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
                          guidance=guidance, datalimit=args.datalimit, list_selection=list_selection,
-                         uniform_set=uniform_set, reshift_distribution=reshift_distribution,
+                         uniform_guid=uniform_guid, reshift_distribution=reshift_distribution,
                          return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
-                         ori_proportion=ori_proportion, progress_train=progress_train, include_neg=include_neg, )
+                         ori_proportion=ori_proportion, include_neg=include_neg, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -549,7 +548,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
+def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_guid=False,
              return_img_id=False, reshift_distribution=False, include_neg=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
@@ -558,7 +557,7 @@ def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_sel
                                                                        epoch=epoch, guidance=guidance,
                                                                        list_selection=list_selection,
                                                                        ori_proportion=ori_proportion,
-                                                                       uniform_set=uniform_set,
+                                                                       uniform_guid=uniform_guid,
                                                                        logger=logger, 
                                                                        reshift_distribution=reshift_distribution,
                                                                        return_img_id=return_img_id, include_neg=include_neg, )
