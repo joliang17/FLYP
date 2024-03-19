@@ -144,7 +144,6 @@ class CsvDataset(Dataset):
 
         # self.classes = max(self.labels) + 1
         logging_input(f'Loading data with length {len(self.images)}.', logger)
-        pdb.set_trace()
 
     def __len__(self):
         return len(self.captions)
