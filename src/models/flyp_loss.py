@@ -1,4 +1,3 @@
-from asyncio.constants import LOG_THRESHOLD_FOR_CONNLOST_WRITES
 import os
 import copy
 import time
@@ -11,8 +10,6 @@ from clip.loss import ClipLoss
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from typing import List
-from src.args import parse_arguments
-from src.datasets.common import get_dataloader, maybe_dictionarize
 from src.models.eval import evaluate
 from src.models.modeling import ClassificationHead, CLIPEncoder, ImageClassifier
 from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
@@ -97,7 +94,8 @@ def generate_class_head(model, args, epoch):
 def progress_eval(model, args, last_perform, epoch, logger, progress_ma=None):
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_eval=True, )
+    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger,
+                            progress_eval=True, )
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
@@ -265,7 +263,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if args.cont_finetune:
         model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
                                   f'checkpoint_15.pt')
-        # model_path = os.path.join("checkpoints/flyp_loss_curriculum_v1001/_BS256_WD0.2_LR1e-05_run1",
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
@@ -311,7 +308,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
 
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                              list_classes=list_classes, epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
+                              list_classes=list_classes, epoch=0, ori_proportion=ori_proportion,
+                              include_neg=args.include_neg)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
