@@ -66,8 +66,8 @@ def maybe_dictionarize(batch,
     elif len(batch) == 4:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
     elif progress_guid:
-        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3],
-                 'guidance': batch[4], 'img_id': batch[-1]}
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': [4],
+                 'guidance': batch[5], 'img_id': batch[-1]}
     else:
         raise ValueError(f'Unexpected number of elements: {len(batch)}')
 

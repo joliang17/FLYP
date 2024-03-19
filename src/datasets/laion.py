@@ -140,6 +140,7 @@ class CsvDataset(Dataset):
             self.return_label = True
             self.labels = list(map(int, df[label_key].tolist()))
             self.img_path = df["filepath"].tolist()
+            self.prompt = df["title"].tolist()
         self.transforms = transforms
 
         # self.classes = max(self.labels) + 1
@@ -175,9 +176,11 @@ class CsvDataset(Dataset):
         if self.return_label:
             label = self.labels[idx]
             f_path = self.img_path[idx]
+            f_title = self.prompt[idx]
 
             return_label.append(label)
             return_label.append(f_path)
+            return_label.append(f_title)
 
         if self.return_guidance:
             guidance = self.guidance[idx]
