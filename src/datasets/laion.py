@@ -84,8 +84,6 @@ class CsvDataset(Dataset):
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
-
-
         ##########################
         # only loading guidance
         if guidance is not None:
