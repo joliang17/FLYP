@@ -62,7 +62,7 @@ def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, list_classes=None, epoch=0,
-              ori_proportion=None, uniform_set=False, reshift_distribution=False):
+              ori_proportion=None, uniform_set=False, reshift_distribution=False, include_neg=False):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -76,7 +76,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, li
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, list_selection=list_classes, ori_proportion=ori_proportion,
-                             uniform_set=uniform_set, return_img_id=return_img_id,
+                             uniform_set=uniform_set, return_img_id=return_img_id, include_neg=include_neg
                              reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -311,7 +311,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
 
     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                              list_classes=list_classes, epoch=0, ori_proportion=ori_proportion)
+                              list_classes=list_classes, epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
@@ -485,7 +485,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                               cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
                                               uniform_set=uniform_set, ori_proportion=ori_proportion,
-                                              reshift_distribution=reshift_distribution)
+                                              reshift_distribution=reshift_distribution, include_neg=args.include_neg)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)

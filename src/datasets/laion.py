@@ -43,9 +43,12 @@ def logging_input(curinput='', logger=None):
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False, logger=None):
+                 return_img_id=False, only_img_id=False, progress_train=False, reshift_distribution=False, include_neg=False,logger=None):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
+        df_pos = df[df['label'] != 0]
+        df_neg = df[df['label'] == 0]
+        len_neg = len(df_neg)
 
         ##########################
         # mixture from original data * image guidance
@@ -60,13 +63,23 @@ class CsvDataset(Dataset):
         if uniform_set:
             # only train on a uniformly distributed dataset
             # df = df.sample(n=10000, replace=False, ignore_index=True)
-            df = df.groupby('guidance').apply(lambda x: x.sample(n=1000)).reset_index(drop=True)
-            logging_input(f'sampling data {len(df)}.', logger)
+            # method1 :
+            # including guid1 : guid2 : guid3 : .. : guidn : neg = 1:1:...:1
+            if include_neg:
+                df_pos_temp = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
+                df_neg_temp = df_neg.sample(n=min(len_neg, 1000), replace=False, ignore_index=True).reset_index(drop=True)
+                df = pd.concat([df_pos_temp, df_neg_temp])
+                logging_input(f'sampling pos data {len(df_pos_temp)}, neg data{len(df_neg_temp)}.', logger)
+            else:
+                df = df.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
 
-            # for sample experiment, only sample few samples from training data
+            logging_input(f'sampling total data {len(df)}.', logger)
+
+        # for sample experiment, only sample few samples from training data
         self.only_img_id = only_img_id
         if self.only_img_id:
             # sort the df by img_id
+            # generated img only here
             df = df[df['img_id'] >= 0]
             # df = df.sample(n=10000, replace=False, ignore_index=True) 
             df = df.sort_values(by='img_id', )
@@ -74,11 +87,19 @@ class CsvDataset(Dataset):
         ##########################
         # only loading guidance
         if guidance is not None:
+            # only positive is included if guid != 100
             df = df[df['guidance'] == guidance]
             if datalimit != -1 and len(df) > datalimit:
                 df = df.sample(n=datalimit, replace=False, ignore_index=True)
+                logging_input(f'sampling guid={guidance} with {len(df)} samples.', logger)
+            if guidance != 100 and include_neg:
+                # mix with negative samples
+                neg_cnt = min(len_neg, int(len(df) / 2))
+                df_neg_temp = df_neg.sample(n=neg_cnt, replace=False, ignore_index=True)
+                df = pd.concat([df, df_neg_temp])
+                logging_input(f'sampling neg with {len(df_neg_temp)} samples.', logger)
 
-                ##########################
+        ##########################
         # mixture from original data * image guidance
         if ori_proportion is not None:
             num_df = len(df)
@@ -98,7 +119,7 @@ class CsvDataset(Dataset):
 
         if progress_train:
             # select part of data based on each guidance
-            df = df.groupby('guidance').apply(lambda x: x.sample(n=1000)).reset_index(drop=True)
+            df = df.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -477,7 +498,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
                     uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False,
-                    progress_train=False, reshift_distribution=False, logger=None):
+                    progress_train=False, reshift_distribution=False, include_neg=False, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -496,7 +517,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
                          guidance=guidance, datalimit=args.datalimit, list_selection=list_selection,
                          uniform_set=uniform_set, reshift_distribution=reshift_distribution,
                          return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
-                         ori_proportion=ori_proportion, progress_train=progress_train, )
+                         ori_proportion=ori_proportion, progress_train=progress_train, include_neg=include_neg, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -529,7 +550,7 @@ def get_dataset_fn(data_path, dataset_type):
 
 
 def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
-             return_img_id=False, reshift_distribution=False):
+             return_img_id=False, reshift_distribution=False, include_neg=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -540,6 +561,6 @@ def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_sel
                                                                        uniform_set=uniform_set,
                                                                        logger=logger, 
                                                                        reshift_distribution=reshift_distribution,
-                                                                       return_img_id=return_img_id, )
+                                                                       return_img_id=return_img_id, include_neg=include_neg, )
 
     return data
