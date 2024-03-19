@@ -38,8 +38,8 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     model.eval()
     classification_head.eval()
 
-    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, guidance=100, return_guidance=True,
-                                 return_img_id=True, logger=logger).dataloader
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, guidance=100,
+                                 return_guidance=True, return_img_id=True, logger=logger).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -91,11 +91,13 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if progress_guid:
         # run on part of training data & only pos samples
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False, only_img_id=True, uniform_guid=True, 
-                                        return_guidance=True, return_img_id=True, ).dataloader
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
+                                     only_img_id=True, uniform_guid=True, return_guidance=True,
+                                     return_img_id=True, ).dataloader
 
     else:
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False, ).dataloader
+        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger,
+                                     is_train=False, ).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -104,9 +106,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
 
-    if progress_guid:
-        dict_labels = dict()
-        dict_preds = dict()
+    dict_labels = dict()
+    dict_preds = dict()
 
     with torch.no_grad():
         top1, correct, n = 0., 0., 0.
@@ -289,7 +290,8 @@ def eval_single_batch_dataset(image_classifier, dataset, args, classification_he
     return metrics['top1'], cnt_loss.item()
 
 
-def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False, progress_sample=False):
+def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False,
+             progress_sample=False):
     if args.eval_datasets is None:
         return
     info = vars(args)
@@ -306,7 +308,9 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
         # load specific curriculum data and evaluate performance on group of guidance
         logging_input(f"Evaluating on curriculum evaluation dataset", logger)
         dataset = None
-        results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger, progress_guid=True, )
+
+        results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger,
+                                      progress_guid=True, )
         if 'guidance_f1' in results:
             dict_guidance_f1 = results['guidance_f1']
             list_acc = [[key, value] for key, value in dict_guidance_f1.items()]
