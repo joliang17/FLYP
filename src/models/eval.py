@@ -53,6 +53,8 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
             y = data['labels'].to(device)
             guidances = data['guidance'].to(device)
             img_ids = data['img_id'].to(device)
+            if 'title' in data:
+                title = data['title']
 
             logits = utils.get_logits(x, model, classification_head)
 
@@ -159,7 +161,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                 if progress_guid:
                     guidances = torch.unique(guidance)
                     for guid_i in guidances:
-                        pdb.set_trace()
                         guid_i = guid_i.item()
                         sap_ids = (guidance == guid_i).nonzero(as_tuple=True)
                         cur_pred = pred[sap_ids]
