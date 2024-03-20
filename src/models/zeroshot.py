@@ -48,7 +48,7 @@ def get_zeroshot_classifier(args, clip_model):
 
     with torch.no_grad():
         zeroshot_weights = []
-        for classname in tqdm(classes):
+        for classname in classes:
             texts = []
             for t in template:
                 texts.append(t(classname))

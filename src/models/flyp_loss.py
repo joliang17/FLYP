@@ -148,6 +148,8 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
 
     if args.progress_metric == 'Acc':
         keywords = 'Accuracy'
+    elif args.progress_metric == 'Prob':
+        keywords = 'Values'
     else:
         keywords = 'F1'
     logger.info(f"Computing progress based on metric {keywords}")
@@ -158,10 +160,13 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
         if keywords not in key:
             continue
         if key not in last_perform:
-            last_perform[key] = 0
+            if isinstance(value, float):
+                last_perform[key] = 0
+            else:
+                last_perform[key] = [0] * len(value)
 
         guidance_i = int(
-            key.replace('Strength ', '').replace('Guidance ', '').replace(' Accuracy', '').replace(' F1', ''))
+            key.replace('Strength ', '').replace('Guidance ', '').replace(' Accuracy', '').replace(' F1', '').replace(' Values', ''))
 
         # compute moving average of progress
         if args.ma_progress and progress_ma is not None:
@@ -170,11 +175,26 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             # compute for average here
             value = np.mean(np.array(progress_ma[guidance_i]))
 
-        str_progress[f"Guidance {guidance_i}"] = np.round(value - last_perform[key], 6)
-        res_progress[guidance_i] = value - last_perform[key]
-        cur_stats[guidance_i] = value
+        if args.progress_metric != 'Prob':
+            str_progress[f"Guidance {guidance_i}"] = np.round(value - last_perform[key], 6)
+            res_progress[guidance_i] = value - last_perform[key]
+            cur_stats[guidance_i] = value
 
-    pdb.set_trace()
+        else:
+            # progress as relative increase of prob in each image
+            value_arr = np.array(value)
+            last_arr = np.array(last_perform[key])
+            imgs_diff = np.round(value_arr - last_arr, 6)
+            relative_diff = imgs_diff/value_arr
+            mean_diff = np.mean(relative_diff)
+            std_diff = np.std(relative_diff)
+
+            str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
+            res_progress[guidance_i] = mean_diff
+            cur_stats[guidance_i] = value
+            logger.info(f"Guidance {guidance_i}, mean: {np.round(mean_diff, 6)}, std: {np.round(std_diff, 4)}")
+
+    # pdb.set_trace()
     last_perform = copy.deepcopy(Dict_cur_guidance)
     return res_progress, str_progress, last_perform, cur_stats
 
@@ -441,6 +461,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             try:
                 ft_batch = next(ft_iterator)
             except StopIteration:
+                # pdb.set_trace()
                 ori_proportion = None
                 uniform_set = False  # run on uniform set right not
                 reshift_distribution = False
@@ -465,7 +486,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         guid_res = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
                                                   cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
-
                 elif args.curriculum and args.progress_guid:
                     if args.uniform_set and not next_change_guid:
                         # not training progress eval to find the best guid
