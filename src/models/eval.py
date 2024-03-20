@@ -122,7 +122,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
             x = data[input_key].to(device)
             y = data['labels'].to(device)
-            img_ids = data['img_id'].to(device)
+            if 'img_id' in data:
+                img_ids = data['img_id']
 
             if 'guidance' in data:
                 guidance = data['guidance']
