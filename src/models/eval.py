@@ -100,7 +100,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     else:
         ## equals to dataloader = dataset.test_loader
         dataloader = get_dataloader(dataset, is_train=False, args=args, image_encoder=image_enc)
-        pdb.set_trace()
 
         # ft_iterator = iter(dataloader)
         # logging_input(f'dataloader batch: {len(ft_iterator)}', logger)
