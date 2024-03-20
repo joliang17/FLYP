@@ -145,7 +145,7 @@ def main(args):
 
     df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
-    # TODO: select image_id with all guidance
+    # select image_id with all guidance
     print(f"selecting images with all guidance for guidance selection")
     df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
     df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
