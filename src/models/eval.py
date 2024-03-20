@@ -38,7 +38,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     model.eval()
     classification_head.eval()
 
-    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, return_guidance=True,
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, progress_train=True, is_train=False, return_guidance=True,
                                  return_img_id=True, only_img_id=True, logger=logger).dataloader
 
     batched_data = enumerate(dataloader)
