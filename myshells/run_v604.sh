@@ -23,7 +23,7 @@ TRAIN_FOLDER="../data/train_new"
 TEST_FOLDER="../data/test"
 SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_4/"
 
- python datacreation_scripts/iwildcam.py --mode="train" --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --total_train --gene_constr='../data/metadata/used_imgid/used_imgid_v4.pkl'
+#  python datacreation_scripts/iwildcam.py --mode="train" --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --total_train --gene_constr='../data/metadata/used_imgid/used_imgid_v4.pkl'
 
 
 # uniformly distribution + no randomness + train from pretrain

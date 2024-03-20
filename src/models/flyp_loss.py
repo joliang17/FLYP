@@ -126,7 +126,7 @@ def generate_class_head(model, args, epoch):
 
 
 def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_sample=False,
-                  progress_ma=None):
+                  progress_ma=None, print_log=True):
     """
     Find best guidance based on guid group
     :param model:
@@ -182,7 +182,8 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             str_progress[f"Guidance {guidance_i}"] = guid_diff
             res_progress[guidance_i] = value - last_perform[key]
             cur_stats[guidance_i] = value
-            logger.info(f"Guidance {guidance_i} diff: {guid_diff}")
+            if print_log:
+                logger.info(f"Guidance {guidance_i} diff: {guid_diff}")
 
 
         else:
@@ -197,7 +198,8 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
             res_progress[guidance_i] = mean_diff
             cur_stats[guidance_i] = value
-            logger.info(f"Guidance {guidance_i}, mean: {np.round(mean_diff, 6)}, std: {np.round(std_diff, 4)}")
+            if print_log:
+                logger.info(f"Guidance {guidance_i}, mean: {np.round(mean_diff, 6)}, std: {np.round(std_diff, 4)}")
 
     # pdb.set_trace()
     last_perform = copy.deepcopy(Dict_cur_guidance)
@@ -420,7 +422,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.uniform_set:
         # start with guid found on uniformly distributed dataset
-        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, )
+        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
         res_progress, _, last_perform, _ = eval_res
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True, include_neg=args.include_neg)
         next_change_guid = True
@@ -519,7 +521,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, )
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, print_log=False)
                         res_progress, _, last_perform, _ = eval_res
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -638,35 +640,35 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        # if args.debug:
-        #     for epoch in range(1, 19):
-        #         model = clip_encoder
-        #         model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori/_BS200_WD0.2_LR1e-05_run1",
-        #                                 f'checkpoint_{epoch}.pt')
-        #         logger.info('Loading model ' + str(model_path))
-        #         pdb.set_trace()
+        if args.debug:
+            # for epoch in range(4, 20):
+            # for epoch in range(0, 1):
+                # model = clip_encoder
+                # model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
+                #                         f'checkpoint_{epoch}.pt')
+                # logger.info('Loading model ' + str(model_path))
 
-        #         checkpoint = torch.load(model_path)
-        #         model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
-        #         model = model.cuda()
-        #         model = torch.nn.DataParallel(model, device_ids=devices)
-        #         # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
+                # checkpoint = torch.load(model_path)
+                # model.load_state_dict(checkpoint['model_state_dict'])
+                # model = model.cuda()
+                # model = torch.nn.DataParallel(model, device_ids=devices)
 
-        #         logger.info(f"Progress evaluation on training data ...")
-        #         dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-        #                                             progress_ma=progress_ma)
-        #         dict_best_guid['Epoch'] = epoch
+            logger.info(f"Progress evaluation on training data ...")
+            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+                                                progress_ma=progress_ma)
 
-        # save progress_ma:
-        # with open(log_dir + f'/conf{epoch}.pkl', 'wb') as f:
-        #     pickle.dump(dict_best_guid, f)
+            # save guidance_score:
+            with open(log_dir + f'/pred_score_{epoch}.pkl', 'wb') as f:
+                pickle.dump(dict_best_guid, f)
+
+            exit(0)
 
         # if args.cluster == 'loss':
         #     from sklearn.cluster import KMeans
         #     import numpy as np
         #     # each img id might have multiple loss value
         #     # reshape list loss to [loss1, loss2] for each image id
-        #
+        
         #     list_loss = [item[-1] for item in loss_pairs]
         #     arr_loss = np.array(list_loss).reshape(-1, 1)
         #     n_clusters = 7
@@ -677,7 +679,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #     with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
         #         pickle.dump(new_loss_pair, f)
 
-        # exit(0)
         #############################################
 
         #############################################
