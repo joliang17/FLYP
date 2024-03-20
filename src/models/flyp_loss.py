@@ -418,7 +418,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                                                         cur_guidance_id=cur_guidance_id,
                                                                                         cur_str_times=cur_str_times,
                                                                                         ctype='in_curri',
-                                                                                        loop_times=1)
+                                                                                        loop_times=loop_times)
                             logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
                 elif args.curriculum and args.progress:
                     if args.uniform_set and not next_change_guid:
