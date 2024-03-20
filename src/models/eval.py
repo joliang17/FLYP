@@ -94,19 +94,18 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if progress_guid:
         # run on part of training data & only pos samples
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                     only_img_id=True, return_guidance=True,
-                                     return_img_id=True, ).dataloader
+                                     only_img_id=True, return_guidance=True, return_img_id=True, ).dataloader
+
 
     else:
         ## equals to dataloader = dataset.test_loader
         dataloader = get_dataloader(dataset, is_train=False, args=args, image_encoder=image_enc)
 
-        # ft_iterator = iter(dataloader)
-        # logging_input(f'dataloader batch: {len(ft_iterator)}', logger)
+        # ft_iterator = iter(dataloader)  # logging_input(f'dataloader batch: {len(ft_iterator)}', logger)
 
     batched_data = enumerate(dataloader)
     device = args.device
-    
+
     if hasattr(dataset, 'post_loop_metrics'):
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
@@ -238,7 +237,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                 if guid not in dict_guid_prob:
                     dict_guid_prob[guid] = []
                 dict_guid_prob[guid].append([prob, img_id])
-        
+
         metrics['img_guid_pair'] = dict_guid_prob
 
     if 'top1' not in metrics:

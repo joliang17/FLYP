@@ -42,7 +42,7 @@ def logging_input(curinput='', logger=None):
 
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
-                 datalimit=-1, list_selection=None, ori_proportion=None, uniform_guid=False, return_guidance=False,
+                 datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False,
                  return_img_id=False, only_img_id=False, reshift_distribution=False, include_neg=False,logger=None):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
@@ -107,15 +107,6 @@ class CsvDataset(Dataset):
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
             logging_input(f'Concatted data {num_df} + {num_ori} = {len(df)}.', logger)
-
-        if list_selection is not None:
-            df = df[df['label'].isin(list_selection)]
-            # add part of other classes data
-            df_other = df[~df['label'].isin(list_selection)]
-            df_other.sample(frac=0.2, replace=True)
-            logging_input(f"Loading in classes data {len(df)}, out classes data {len(df_other)}", logger)
-
-            df = pd.concat([df, df_other])
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -495,7 +486,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None,
                     uniform_guid=False, return_guidance=False, return_img_id=False, only_img_id=False,
                     reshift_distribution=False, include_neg=False, logger=None):
     # normal training / curriculum eval on test dataset
@@ -513,7 +504,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
 
     dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
-                         guidance=guidance, datalimit=args.datalimit, list_selection=list_selection,
+                         guidance=guidance, datalimit=args.datalimit,
                          uniform_guid=uniform_guid, reshift_distribution=reshift_distribution,
                          return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
                          ori_proportion=ori_proportion, include_neg=include_neg, )
@@ -548,14 +539,13 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_guid=False,
+def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
              return_img_id=False, reshift_distribution=False, include_neg=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
     data["train_ft"] = get_dataset_fn(args.ft_data, args.dataset_type)(args, preprocess_train, is_train=True,
                                                                        epoch=epoch, guidance=guidance,
-                                                                       list_selection=list_selection,
                                                                        ori_proportion=ori_proportion,
                                                                        uniform_guid=uniform_guid,
                                                                        logger=logger, 
