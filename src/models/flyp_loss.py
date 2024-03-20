@@ -174,6 +174,7 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
         res_progress[guidance_i] = value - last_perform[key]
         cur_stats[guidance_i] = value
 
+    pdb.set_trace()
     last_perform = copy.deepcopy(Dict_cur_guidance)
     return res_progress, str_progress, last_perform, cur_stats
 
@@ -366,7 +367,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = num_batch_ori
     logger.info(f"Num batches is {num_batches}")
 
-    classification_head.train()
+    # classification_head.train()
     model.train()
 
     clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1,
@@ -391,7 +392,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     stats = []
     last_perform = {}
     loss_pairs = []
-    change_guid = False
+    next_change_guid = False
+    if args.uniform_set:
+        # start with guid found on uniformly distributed dataset
+        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, )
+        res_progress, _, last_perform, _ = eval_res
+        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True,       include_neg=args.include_neg)
+        next_change_guid = True
+        ft_iterator = iter(ft_dataloader)
+
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -419,7 +428,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         id_flyp_loss_sum = 0
         model.train()
         model = model.cuda()
-        classification_head.train()
+        # classification_head.train()
 
         for i in trange(num_batches):
             if args.test:
@@ -458,23 +467,23 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
 
                 elif args.curriculum and args.progress_guid:
-                    if args.uniform_set and not change_guid:
+                    if args.uniform_set and not next_change_guid:
                         # not training progress eval to find the best guid
                         # run training on uniformly distributed dataset first
                         # evaluate the improvement on this uniformly distributed dataset
                         # use the largest improvement as the next guid
                         cur_guidance = None
                         uniform_set = True
-                        change_guid = True
+                        next_change_guid = True
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, )
                         res_progress, _, last_perform, _ = eval_res
-                    elif args.reshift_distribution and not change_guid:
+                    elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
                         reshift_distribution = True
-                        change_guid = True
+                        next_change_guid = True
                     else:
-                        change_guid = False
+                        next_change_guid = False
                         # if find guidance on training samples
                         # if args.cluster == 'loss':
                         #     pdb.set_trace()
@@ -519,7 +528,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
-            # logit_scale2 = logit_scale2[0]
+            if len(logit_scale2.shape) >= 1:
+                logit_scale2 = logit_scale2[0]
             ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
             ft_clip_loss = torch.mean(ft_clip_loss_peritem)
@@ -582,28 +592,28 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        if args.debug:
-            for epoch in range(1, 19):
-                model = clip_encoder
-                model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori/_BS200_WD0.2_LR1e-05_run1",
-                                        f'checkpoint_{epoch}.pt')
-                logger.info('Loading model ' + str(model_path))
-                pdb.set_trace()
+        # if args.debug:
+        #     for epoch in range(1, 19):
+        #         model = clip_encoder
+        #         model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori/_BS200_WD0.2_LR1e-05_run1",
+        #                                 f'checkpoint_{epoch}.pt')
+        #         logger.info('Loading model ' + str(model_path))
+        #         pdb.set_trace()
 
-                checkpoint = torch.load(model_path)
-                model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
-                model = model.cuda()
-                model = torch.nn.DataParallel(model, device_ids=devices)
-                # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
+        #         checkpoint = torch.load(model_path)
+        #         model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
+        #         model = model.cuda()
+        #         model = torch.nn.DataParallel(model, device_ids=devices)
+        #         # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
 
-                logger.info(f"Progress evaluation on training data ...")
-                dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                    progress_ma=progress_ma)
-                dict_best_guid['Epoch'] = epoch
+        #         logger.info(f"Progress evaluation on training data ...")
+        #         dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+        #                                             progress_ma=progress_ma)
+        #         dict_best_guid['Epoch'] = epoch
 
                 # save progress_ma:
-                with open(log_dir + f'/conf{epoch}.pkl', 'wb') as f:
-                    pickle.dump(dict_best_guid, f)
+                # with open(log_dir + f'/conf{epoch}.pkl', 'wb') as f:
+                #     pickle.dump(dict_best_guid, f)
 
             # if args.cluster == 'loss':
             #     from sklearn.cluster import KMeans
@@ -621,7 +631,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             #     with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
             #         pickle.dump(new_loss_pair, f)
 
-            exit(0)
+            # exit(0)
         #############################################
 
         #############################################
