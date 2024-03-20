@@ -108,7 +108,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, ori_proportion=ori_proportion, uniform_guid=uniform_guid,
                              return_img_id=return_img_id, include_neg=include_neg,
-                             datalimit=args.datalimit, 
+                             datalimit=args.datalimit,
                              reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -195,7 +195,7 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             relative_diff = imgs_diff / value_arr
             mean_diff = np.mean(relative_diff)
             std_diff = np.std(relative_diff)
-            
+
             str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
             res_progress[guidance_i] = mean_diff
             cur_stats[guidance_i] = value
@@ -282,8 +282,8 @@ def init_guidance_setting(args, logger, ):
             loop_times = math.ceil(total_iteration / len_all_guid)
 
             # start from guidance = 100
-            cur_guidance_id = len(list_guidance) - 1
-            # cur_guidance_id = 0
+            # cur_guidance_id = len(list_guidance) - 1
+            cur_guidance_id = 0
             cur_guidance = list_guidance[cur_guidance_id]
 
     elif args.baseline:
@@ -671,7 +671,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #     import numpy as np
         #     # each img id might have multiple loss value
         #     # reshape list loss to [loss1, loss2] for each image id
-        
+
         #     list_loss = [item[-1] for item in loss_pairs]
         #     arr_loss = np.array(list_loss).reshape(-1, 1)
         #     n_clusters = 7
