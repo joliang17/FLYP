@@ -98,12 +98,16 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                                      return_img_id=True, ).dataloader
 
     else:
-        dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger,
-                                     is_train=False, ).dataloader
+        ## equals to dataloader = dataset.test_loader
+        dataloader = get_dataloader(dataset, is_train=False, args=args, image_encoder=image_enc)
+        pdb.set_trace()
+
+        # ft_iterator = iter(dataloader)
+        # logging_input(f'dataloader batch: {len(ft_iterator)}', logger)
 
     batched_data = enumerate(dataloader)
     device = args.device
-
+    
     if hasattr(dataset, 'post_loop_metrics'):
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
