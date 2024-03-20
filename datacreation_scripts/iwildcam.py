@@ -53,13 +53,17 @@ def filter_generated_img(pkl_path: str, dict_filt: float):
 
 def merge_with_prompt(df, label_to_name, merge_type='train'):
     # merge prompts
-    df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
-    df2 = pd.merge(df, label_to_name[['y', 'prompt2']], on='y').rename({'prompt2': 'title'}, axis='columns')
-    df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
+    if merge_type == 'train':
+        df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
+        df2 = pd.merge(df, label_to_name[['y', 'prompt2']], on='y').rename({'prompt2': 'title'}, axis='columns')
+        df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
 
-    del df1
-    del df2
-    del df
+        del df1
+        del df2
+        del df
+    else:
+        df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
+        df_final = df1[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
 
     df_final = df_final.rename({'filename': 'filepath', 'y': 'label'}, axis='columns')[
         ['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
@@ -151,6 +155,7 @@ def main(args):
     df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
     sel_img = df_count[df_count['guidance'] == 7].sample(n=1000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
     df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
+    df_sel = df_sel.groupby(['img_name', 'guidance']).apply(lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
