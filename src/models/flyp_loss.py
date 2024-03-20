@@ -404,11 +404,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = 100
                         reshift_distribution = True
                         next_change_guid = True
+                        logger.info(f"Running on reshift set (guid= {cur_guidance}), set pre_guidance={pre_guidance}")
                     else:
                         next_change_guid = False
                         # sequentially use guidance
+                        logger.info(f"changing curriculum .. pre_guidance={pre_guidance}")
                         if pre_guidance is not None:
                             cur_guidance_id = list_guidance.index(pre_guidance)
+                            logger.info(f"changing curriculum .. cur_guidance_id={cur_guidance_id}")
                         if args.curriculum_epoch is None:
                             cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
                                                                         ctype='no_curri')
@@ -417,7 +420,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                                                         cur_guidance_id=cur_guidance_id,
                                                                                         cur_str_times=cur_str_times,
                                                                                         ctype='in_curri',
-                                                                                        loop_times=loop_times)
+                                                                                        loop_times=1)
+                            logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
                 elif args.curriculum and args.progress:
                     if args.uniform_set and not next_change_guid:
                         # not training progress eval to find the best guid
@@ -489,14 +493,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id = list_guidance.index(cur_guidance)
                         cur_str_times = 0
 
-                    if args.proportion:
-                        ori_proportion = 1 / args.curriculum_epoch * epoch
+                if args.proportion:
+                    ori_proportion = 1 / args.curriculum_epoch * epoch
 
-                    # ori_proportion
-                    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                              cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
-                                              uniform_set=uniform_set, ori_proportion=ori_proportion,
-                                              reshift_distribution=reshift_distribution, include_neg=args.include_neg)
+                # ori_proportion
+                ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
+                                            cur_str_times=cur_str_times, list_classes=list_classes, epoch=epoch,
+                                            uniform_set=uniform_set, ori_proportion=ori_proportion,
+                                            reshift_distribution=reshift_distribution, include_neg=args.include_neg)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
