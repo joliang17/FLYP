@@ -108,6 +108,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              guidance=cur_guidance, ori_proportion=ori_proportion, uniform_guid=uniform_guid,
                              return_img_id=return_img_id, include_neg=include_neg,
+                             datalimit=args.datalimit, 
                              reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -146,6 +147,7 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
     str_progress = dict()
     res_progress = dict()
     cur_stats = dict()
+    saved_diff = dict()
 
     if args.progress_metric == 'Acc':
         keywords = 'Accuracy'
@@ -185,7 +187,6 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             if print_log:
                 logger.info(f"Guidance {guidance_i} diff: {guid_diff}")
 
-
         else:
             # progress as relative increase of prob in each image
             value_arr = np.array(value)
@@ -194,16 +195,17 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             relative_diff = imgs_diff / value_arr
             mean_diff = np.mean(relative_diff)
             std_diff = np.std(relative_diff)
-
+            
             str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
             res_progress[guidance_i] = mean_diff
             cur_stats[guidance_i] = value
+            saved_diff[guidance_i] = [last_arr, value_arr]
             if print_log:
                 logger.info(f"Guidance {guidance_i}, mean: {np.round(mean_diff, 6)}, std: {np.round(std_diff, 4)}")
 
     # pdb.set_trace()
     last_perform = copy.deepcopy(Dict_cur_guidance)
-    return res_progress, str_progress, last_perform, cur_stats
+    return res_progress, str_progress, last_perform, cur_stats, saved_diff
 
 
 def progress_eval_train(model, args, epoch, logger, progress_ma=None):
@@ -384,7 +386,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ft_iterator = iter(ft_dataloader)
     num_batches = len(ft_dataloader)
 
-    if args.curriculum:
+    if args.guidance == -1 and args.curriculum:
         if args.curriculum_epoch is None:
             num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
         else:
@@ -423,12 +425,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if args.uniform_set:
         # start with guid found on uniformly distributed dataset
         eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        res_progress, _, last_perform, _ = eval_res
+        res_progress, _, last_perform, _, saved_diff = eval_res
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True, include_neg=args.include_neg)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-            pickle.dump(last_perform, f)
+            pickle.dump(saved_diff, f)
         cnt += 1
 
     for epoch in trange(start_epoch + 1, args.epochs):
@@ -522,7 +524,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         uniform_set = True
                         next_change_guid = True
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, print_log=False)
-                        res_progress, _, last_perform, _ = eval_res
+                        res_progress, _, last_perform, _, _ = eval_res
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
@@ -533,9 +535,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
-                        res_progress, _, last_perform, _ = eval_res
+                        res_progress, _, last_perform, _, saved_diff = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(last_perform, f)
+                            pickle.dump(saved_diff, f)
                         cnt += 1
 
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
@@ -617,7 +619,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             if args.ma_progress and (num_batches - i) % 100 == 0:
                 logger.info(f"Running progress evaluation for moving average with i={i}")
                 # calculate progress multiple times
-                _, _, _, cur_stats = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
+                _, _, _, cur_stats, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
 
                 for guid, value in cur_stats.items():
                     if guid not in progress_ma:
@@ -661,6 +663,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             with open(log_dir + f'/pred_score_{epoch}.pkl', 'wb') as f:
                 pickle.dump(dict_best_guid, f)
 
+            # continue
             exit(0)
 
         # if args.cluster == 'loss':
@@ -685,7 +688,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Evaluate progress on different group of cur_guidance for this epoch
         if args.progress_guid:
             logger.info(f"Progress evaluation ...")
-            _, str_progress, _, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+            _, str_progress, _, _, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                   progress_sample=False, progress_ma=progress_ma)
 
             str_progress['Epoch'] = epoch

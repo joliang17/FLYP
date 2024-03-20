@@ -80,7 +80,7 @@ class CsvDataset(Dataset):
                 df = pd.concat([df_pos_temp, df_neg_temp])
                 logging_input(f'sampling pos data {len(df_pos_temp)}, neg data{len(df_neg_temp)}.', logger)
             else:
-                df = df.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
+                df = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
@@ -486,9 +486,9 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None,
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, 
                     uniform_guid=False, return_guidance=False, return_img_id=False, only_img_id=False,
-                    reshift_distribution=False, include_neg=False, logger=None):
+                    reshift_distribution=False, include_neg=False, datalimit=None, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -504,7 +504,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
 
     dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
-                         guidance=guidance, datalimit=args.datalimit,
+                         guidance=guidance, datalimit=datalimit,
                          uniform_guid=uniform_guid, reshift_distribution=reshift_distribution,
                          return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
                          ori_proportion=ori_proportion, include_neg=include_neg, )
@@ -539,7 +539,7 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
+def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False, datalimit=None, 
              return_img_id=False, reshift_distribution=False, include_neg=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
@@ -548,7 +548,7 @@ def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_prop
                                                                        epoch=epoch, guidance=guidance,
                                                                        ori_proportion=ori_proportion,
                                                                        uniform_guid=uniform_guid,
-                                                                       logger=logger, 
+                                                                       logger=logger, datalimit=datalimit,
                                                                        reshift_distribution=reshift_distribution,
                                                                        return_img_id=return_img_id, include_neg=include_neg, )
 
