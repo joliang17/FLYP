@@ -78,7 +78,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     #     best_guid = list_guid_prob[0][0]
     #     dict_best_guid[img_id] = best_guid
 
-    metrics['best_guid'] = dict_preds
+    metrics['guid_info'] = dict_preds
     return metrics
 
 
@@ -330,7 +330,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
         logging_input(f"Evaluating on training dataset", logger)
         results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
 
-        train_stats[f"guid_info"] = results['best_guid']
+        train_stats[f"guid_info"] = results['guid_info']
         return info
 
     if progress_guid:
