@@ -63,13 +63,13 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
             for i, img_id_t in enumerate(img_ids):
                 img_id = img_id_t.item()
                 cur_label = y[i].item()
-                pdb.set_trace()
                 cur_probs = all_prob[i].detach().cpu().numpy()
                 cur_prob = all_prob[i, cur_label].item()
                 cur_guid = guidances[i].item()
+                cur_title = title[i]
                 if img_id not in dict_preds:
                     dict_preds[img_id] = []
-                dict_preds[img_id].append([cur_guid, cur_prob, cur_probs])
+                dict_preds[img_id].append([cur_label, cur_title, cur_guid, cur_prob, cur_probs])
 
     metrics = {}
     # dict_best_guid = dict()
@@ -302,7 +302,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
         logging_input(f"Evaluating on training dataset", logger)
         results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
 
-        train_stats[f"Best Guid per Image"] = results['best_guid']
+        train_stats[f"guid_info"] = results['best_guid']
         return info
 
     if progress_guid:

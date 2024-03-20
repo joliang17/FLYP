@@ -194,30 +194,30 @@ def progress_eval_train(model, args, epoch, logger, progress_ma=None):
     dict_guid_prob = {}
     _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger=logger, progress_sample=True)
 
-    dict_best_guid = dict()
-    for img_id, list_guid_prob in dict_guid_prob['Best Guid per Image'].items():
-        # compute moving average of progress
-        if args.ma_progress and progress_ma is not None:
-            # adding current eval to ma list
-            progress_ma[img_id].extend(list_guid_prob)
-            # compute for average here
-            new_list_guid = progress_ma[img_id]
-            all_guid = set([item[0] for item in new_list_guid])
-            list_guid_prob_new = []
-            for guid_int in all_guid:
-                guid_probs = [item[1] for item in new_list_guid if item[0] == guid_int]
-                value = np.mean(np.array(guid_probs))
-                list_guid_prob_new.append([guid_int, value])
+    # dict_best_guid = dict()
+    # for img_id, list_guid_prob in dict_guid_prob['guid_info'].items():
+    #     # compute moving average of progress
+    #     if args.ma_progress and progress_ma is not None:
+    #         # adding current eval to ma list
+    #         progress_ma[img_id].extend(list_guid_prob)
+    #         # compute for average here
+    #         new_list_guid = progress_ma[img_id]
+    #         all_guid = set([item[0] for item in new_list_guid])
+    #         list_guid_prob_new = []
+    #         for guid_int in all_guid:
+    #             guid_probs = [item[1] for item in new_list_guid if item[0] == guid_int]
+    #             value = np.mean(np.array(guid_probs))
+    #             list_guid_prob_new.append([guid_int, value])
 
-            list_guid_prob = list_guid_prob_new
+    #         list_guid_prob = list_guid_prob_new
 
-        # find best guid for each image
-        list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
-        pdb.set_trace()
-        best_guid = list_guid_prob[0][0]
-        dict_best_guid[img_id] = best_guid
+    #     # find best guid for each image
+    #     list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
+    #     pdb.set_trace()
+    #     best_guid = list_guid_prob[0][0]
+    #     dict_best_guid[img_id] = best_guid
 
-    return dict_best_guid
+    return dict_guid_prob['guid_info']
 
 
 def init_guidance_setting(args, logger, list_classes=None, ):
@@ -583,14 +583,27 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
         if args.debug:
-            logger.info(f"Progress evaluation on training data ...")
-            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                 progress_ma=progress_ma)
-            dict_best_guid['Epoch'] = epoch
+            for epoch in range(1, 19):
+                model = clip_encoder
+                model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori/_BS200_WD0.2_LR1e-05_run1",
+                                        f'checkpoint_{epoch}.pt')
+                logger.info('Loading model ' + str(model_path))
+                pdb.set_trace()
 
-            # save progress_ma:
-            with open(log_dir + f'/best_guid{epoch}.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+                checkpoint = torch.load(model_path)
+                model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
+                model = model.cuda()
+                model = torch.nn.DataParallel(model, device_ids=devices)
+                # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
+
+                logger.info(f"Progress evaluation on training data ...")
+                dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+                                                    progress_ma=progress_ma)
+                dict_best_guid['Epoch'] = epoch
+
+                # save progress_ma:
+                with open(log_dir + f'/conf{epoch}.pkl', 'wb') as f:
+                    pickle.dump(dict_best_guid, f)
 
             # if args.cluster == 'loss':
             #     from sklearn.cluster import KMeans
