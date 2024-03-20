@@ -207,8 +207,8 @@ def init_guidance_setting(args, logger, list_classes=None, ):
             loop_times = math.ceil(total_iteration / len_all_guid)
 
             # start from guidance = 100
-            cur_guidance_id = len(list_guidance) - 1
-            # cur_guidance_id = 0
+            # cur_guidance_id = len(list_guidance) - 1
+            cur_guidance_id = 0
             cur_guidance = list_guidance[cur_guidance_id]
 
     elif args.baseline:
@@ -348,7 +348,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     stats = []
     last_perform = {}
     loss_pairs = []
-    change_guid = False
+    next_change_guid = False
+    pre_guidance = None
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -397,33 +398,43 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     cur_guidance_id = list_guidance.index(cur_guidance)
                     cur_str_times = 1
                 elif args.curriculum and not args.progress:
-                    # sequentially use guidance
-                    if args.curriculum_epoch is None:
-                        cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
-                                                                       ctype='no_curri')
+                    if args.reshift_distribution and not next_change_guid:
+                        # run training on guid=100 dataset first
+                        pre_guidance = cur_guidance
+                        cur_guidance = 100
+                        reshift_distribution = True
+                        next_change_guid = True
                     else:
-                        cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
-                                                                                      cur_guidance_id=cur_guidance_id,
-                                                                                      cur_str_times=cur_str_times,
-                                                                                      ctype='in_curri',
-                                                                                      loop_times=loop_times)
+                        next_change_guid = False
+                        # sequentially use guidance
+                        if pre_guidance is not None:
+                            cur_guidance_id = list_guidance.index(pre_guidance)
+                        if args.curriculum_epoch is None:
+                            cur_guidance_id, cur_guidance = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
+                                                                        ctype='no_curri')
+                        else:
+                            cur_guidance_id, cur_guidance, cur_str_times = seq_curri_guid(list_guidance,
+                                                                                        cur_guidance_id=cur_guidance_id,
+                                                                                        cur_str_times=cur_str_times,
+                                                                                        ctype='in_curri',
+                                                                                        loop_times=loop_times)
                 elif args.curriculum and args.progress:
-                    if args.uniform_set and not change_guid:
+                    if args.uniform_set and not next_change_guid:
                         # not training progress eval to find the best guid
                         # run training on uniformly distributed dataset first
                         # evaluate the improvement on this uniformly distributed dataset
                         # use the largest improvement as the next guid
                         cur_guidance = None
                         uniform_set = True
-                        change_guid = True
+                        next_change_guid = True
                         res_progress, _, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger)
-                    elif args.reshift_distribution and not change_guid:
+                    elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
                         reshift_distribution = True
-                        change_guid = True
+                        next_change_guid = True
                     else:
-                        change_guid = False
+                        next_change_guid = False
                         # if find guidance on training samples
                         # if args.cluster == 'loss':
                         #     pdb.set_trace()
