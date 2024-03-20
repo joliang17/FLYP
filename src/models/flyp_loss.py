@@ -413,13 +413,17 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     last_perform = {}
     loss_pairs = []
     next_change_guid = False
+    cnt = 0
     if args.uniform_set:
         # start with guid found on uniformly distributed dataset
         eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, )
         res_progress, _, last_perform, _ = eval_res
-        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True,       include_neg=args.include_neg)
+        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True, include_neg=args.include_neg)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
+        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+            pickle.dump(last_perform, f)
+        cnt += 1
 
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
@@ -512,6 +516,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
                         res_progress, _, last_perform, _ = eval_res
+                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                            pickle.dump(last_perform, f)
+                        cnt += 1
+
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
                         largest_guid = list_progress[0]
@@ -658,17 +666,17 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Evaluate progress on different group of cur_guidance for this epoch
         if args.progress_guid:
             logger.info(f"Progress evaluation ...")
-            _, str_progress, last_perform, _ = progress_eval(model, args, last_perform, epoch, logger,
+            _, str_progress, _, _ = progress_eval(model, args, last_perform, epoch, logger,
                                                              progress_guid=True, progress_sample=False,
                                                              progress_ma=progress_ma)
 
             str_progress['Epoch'] = epoch
-            df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
-            df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
+            # df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
+            # df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
 
-            # save progress_ma:
-            with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
-                pickle.dump([last_perform, progress_ma], f)
+            # # save progress_ma:
+            # with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
+            #     pickle.dump([last_perform, progress_ma], f)
 
             progress_ma = dict()
 

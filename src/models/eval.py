@@ -117,6 +117,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         dict_class = dict()
         dict_guidance = dict()
         for i, data in batched_data:
+            # pdb.set_trace()
             data = maybe_dictionarize(data, progress_guid=progress_guid)
 
             x = data[input_key].to(device)
@@ -359,8 +360,6 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
                 train_stats[f"Guidance {pair[0]} F1"] = round(pair[1], 4)
 
         if 'guidance_top1' in results:
-            # pdb.set_trace()
-
             list_acc = [[key, value[0] / value[1], value[1]] for key, value in results['guidance_top1'].items()]
             list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
             for pair in list_acc:

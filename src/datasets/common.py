@@ -65,6 +65,8 @@ def maybe_dictionarize(batch,
         batch = {'images': batch[0], 'labels': batch[1], 'metadata': batch[2]}
     elif len(batch) == 4:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
+    elif len(batch) == 5:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],}
     elif progress_guid:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],
                  'guidance': batch[5], 'img_id': batch[-1]}
