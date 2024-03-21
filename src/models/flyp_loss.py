@@ -100,15 +100,11 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
             if ori_proportion is not None:
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
-    return_img_id = False
-    if args.cluster == 'loss':
-        return_img_id = True
     # load dataloader
 
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-                             guidance=cur_guidance, ori_proportion=ori_proportion, uniform_guid=uniform_guid,
-                             return_img_id=return_img_id, include_neg=include_neg,
-                             datalimit=args.datalimit,
+                             return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance,
+                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
                              reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -126,10 +122,11 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_sample=False,
-                  progress_ma=None, print_log=True):
+def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_sample=False, progress_ma=None,
+                  print_log=True):
     """
     Find best guidance based on guid group
+    :param print_log:
     :param model:
     :param args:
     :param last_perform:
@@ -429,9 +426,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True, include_neg=args.include_neg)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
-        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-            pickle.dump(saved_diff, f)
-        cnt += 1
 
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
@@ -472,7 +466,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             try:
                 ft_batch = next(ft_iterator)
             except StopIteration:
-                # pdb.set_trace()
                 ori_proportion = None
                 uniform_set = False  # run on uniform set right not
                 reshift_distribution = False
@@ -523,13 +516,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, print_log=False)
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 print_log=False)
                         res_progress, _, last_perform, _, _ = eval_res
+                        logger.info(f"Running on uniform set")
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
                         reshift_distribution = True
                         next_change_guid = True
+                        logger.info(f"Running on reshift set (guid={cur_guidance})")
                     else:
                         next_change_guid = False
 
@@ -645,19 +641,19 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.debug:
             # for epoch in range(4, 20):
             # for epoch in range(0, 1):
-                # model = clip_encoder
-                # model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
-                #                         f'checkpoint_{epoch}.pt')
-                # logger.info('Loading model ' + str(model_path))
+            # model = clip_encoder
+            # model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
+            #                         f'checkpoint_{epoch}.pt')
+            # logger.info('Loading model ' + str(model_path))
 
-                # checkpoint = torch.load(model_path)
-                # model.load_state_dict(checkpoint['model_state_dict'])
-                # model = model.cuda()
-                # model = torch.nn.DataParallel(model, device_ids=devices)
+            # checkpoint = torch.load(model_path)
+            # model.load_state_dict(checkpoint['model_state_dict'])
+            # model = model.cuda()
+            # model = torch.nn.DataParallel(model, device_ids=devices)
 
             logger.info(f"Progress evaluation on training data ...")
             dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                progress_ma=progress_ma)
+                                                 progress_ma=progress_ma)
 
             # save guidance_score:
             with open(log_dir + f'/pred_score_{epoch}.pkl', 'wb') as f:
@@ -689,7 +685,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.progress_guid:
             logger.info(f"Progress evaluation ...")
             _, str_progress, _, _, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                  progress_sample=False, progress_ma=progress_ma)
+                                                     progress_sample=False, progress_ma=progress_ma)
 
             str_progress['Epoch'] = epoch
             # df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
