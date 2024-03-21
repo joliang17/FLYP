@@ -566,10 +566,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
 
-            if args.cluster == 'loss':
-                ft_image, ft_text, ft_imgid = ft_batch
-            else:
-                ft_image, ft_text = ft_batch
+            ft_image, ft_text, ft_imgid = ft_batch
 
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
