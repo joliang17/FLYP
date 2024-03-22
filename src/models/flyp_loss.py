@@ -189,9 +189,9 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             value_arr = np.array(value)
             last_arr = np.array(last_perform[key])
             imgs_diff = np.round(value_arr - last_arr, 6)
-            relative_diff = imgs_diff / value_arr
-            mean_diff = np.mean(relative_diff)
-            std_diff = np.std(relative_diff)
+            # relative_diff = imgs_diff / value_arr
+            mean_diff = np.mean(imgs_diff)
+            std_diff = np.std(imgs_diff)
 
             str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
             res_progress[guidance_i] = mean_diff
@@ -532,9 +532,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
                         res_progress, _, last_perform, _, saved_diff = eval_res
-                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                        cnt += 1
+                        # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                        #     pickle.dump(saved_diff, f)
+                        # cnt += 1
 
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
@@ -566,10 +566,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
 
-            if args.cluster == 'loss':
-                ft_image, ft_text, ft_imgid = ft_batch
-            else:
-                ft_image, ft_text = ft_batch
+            ft_image, ft_text, ft_imgid = ft_batch
 
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
 
@@ -641,22 +638,29 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.debug:
             # for epoch in range(4, 20):
             # for epoch in range(0, 1):
-            # model = clip_encoder
-            # model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
-            #                         f'checkpoint_{epoch}.pt')
-            # logger.info('Loading model ' + str(model_path))
+            model = clip_encoder
+            epoch = 19
+            model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
+                                    f'checkpoint_19.pt')
 
-            # checkpoint = torch.load(model_path)
-            # model.load_state_dict(checkpoint['model_state_dict'])
-            # model = model.cuda()
-            # model = torch.nn.DataParallel(model, device_ids=devices)
+            # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
+            #                         f'checkpoint_{epoch}.pt')
+            logger.info('Loading model ' + str(model_path))
+
+            checkpoint = torch.load(model_path)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model = model.cuda()
+            model = torch.nn.DataParallel(model, device_ids=devices)
 
             logger.info(f"Progress evaluation on training data ...")
-            dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-                                                 progress_ma=progress_ma)
+            classification_head_new = generate_class_head(model, args, epoch)
+            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+            dict_best_guid = epoch_stats['dict_img_guid']
+            # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+            #                                      progress_ma=progress_ma)
 
             # save guidance_score:
-            with open(log_dir + f'/pred_score_{epoch}.pkl', 'wb') as f:
+            with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
                 pickle.dump(dict_best_guid, f)
 
             # continue

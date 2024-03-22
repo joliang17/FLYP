@@ -126,9 +126,14 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             y = data['labels'].to(device)
             if 'img_id' in data:
                 img_ids = data['img_id']
+            else:
+                img_ids = torch.arange(i * args.batch_size, i * args.batch_size + x.shape[0])
 
             if 'guidance' in data:
                 guidance = data['guidance']
+            else:
+                guidance = torch.ones_like(y)
+                guidance = guidance*100
 
             if 'image_paths' in data:
                 image_paths = data['image_paths']
@@ -190,14 +195,15 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                         dict_labels[guid_i].append(cur_y.cpu().clone().detach())
                         dict_preds[guid_i].append(cur_pred.cpu().clone().detach())
 
-                    for i, img_id_t in enumerate(img_ids):
-                        img_id = img_id_t.item()
-                        cur_y = y[i].item()
-                        cur_prob = all_prob[i, cur_y].item()
-                        cur_guid = guidance[i].item()
-                        if img_id not in dict_img_guid:
-                            dict_img_guid[img_id] = []
-                        dict_img_guid[img_id].append([cur_guid, cur_prob, ])
+                for i, img_id_t in enumerate(img_ids):
+                    img_id = img_id_t.item()
+                    cur_y = y[i].item()
+                    cur_prob = all_prob[i, cur_y].item()
+                    cur_probs = all_prob[i].detach().cpu().numpy()
+                    cur_guid = guidance[i].item()
+                    if img_id not in dict_img_guid:
+                        dict_img_guid[img_id] = []
+                    dict_img_guid[img_id].append([cur_y, cur_guid, cur_prob, cur_probs])
 
             if hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -248,6 +254,9 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
     if len(dict_guidance) > 0:
         metrics['guidance_top1'] = dict_guidance
+
+    if len(dict_img_guid) > 0:
+        metrics['dict_img_guid'] = dict_img_guid
 
     return metrics
 
@@ -398,4 +407,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
             process_train_stat(results, train_stats, logger, dataset_name)
 
+            if 'dict_img_guid' in results:
+                train_stats['dict_img_guid'] = results['dict_img_guid']
+                
         return info

@@ -153,15 +153,19 @@ def main(args):
     print(f"selecting images with all guidance for guidance selection")
     df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
     df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
-    sel_img = df_count[df_count['guidance'] == 7].sample(n=1000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
+    sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
     df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
     df_sel = df_sel.groupby(['img_name', 'guidance']).apply(lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
+    df_final = df_final[df_final['guidance'] >= 50]
+    print(f'Data for training: {len(df_final)}')
     df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
     
     df_sel_final = merge_with_prompt(df_sel, label_to_name, merge_type='curriculum')
+    df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
+    print(f'Data for curriculum: {len(df_sel_final)}')
     df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
 
