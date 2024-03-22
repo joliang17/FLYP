@@ -19,7 +19,9 @@ TRAIN_FOLDER="../data/train_new"
 TEST_FOLDER="../data/test"
 SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_5_analysis/"
 
-limits=( 100 90 70 50 20 10 0 )
+# limits=( 100 90 70 50 20 10 0 )
+# limits=( 70 50 20 10 0 )
+limits=( 20 10 0 )
 
 
 for i in "${limits[@]}"

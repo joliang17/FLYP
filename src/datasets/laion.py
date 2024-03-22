@@ -80,7 +80,10 @@ class CsvDataset(Dataset):
                 df = pd.concat([df_pos_temp, df_neg_temp])
                 logging_input(f'sampling pos data {len(df_pos_temp)}, neg data{len(df_neg_temp)}.', logger)
             else:
-                df = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
+                # df = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
+
+                df = df[df['guidance'] == 100]
+                df = df.sample(n=20000, replace=False, ignore_index=True)
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
