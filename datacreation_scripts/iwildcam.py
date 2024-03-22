@@ -174,7 +174,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
-    parser.add_argument('--total_train', action=argparse.BooleanOptionalAction)
     parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
     parser.add_argument('--data_folder', default='/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls')

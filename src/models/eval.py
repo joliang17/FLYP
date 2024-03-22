@@ -239,7 +239,9 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
 
         dict_guid_prob = dict()
         for img_id, guid_prob in dict_img_guid.items():
-            for guid, prob in guid_prob:
+            for cur_guid_res in guid_prob:
+                guid = cur_guid_res[1]
+                prob = cur_guid_res[2]
                 if guid not in dict_guid_prob:
                     dict_guid_prob[guid] = []
                 dict_guid_prob[guid].append([prob, img_id])
