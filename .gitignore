@@ -167,6 +167,7 @@ apicache-py3/*
 
 *.txt
 *.out.*
+*.out
 *.ctrl
 
 *.tsv
