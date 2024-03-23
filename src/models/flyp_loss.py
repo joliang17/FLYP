@@ -360,7 +360,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # Data initialization
     cur_str_times = 1
-    start_epoch = 0
+    start_epoch = -1
 
     dataset_class = getattr(datasets, args.train_dataset)
     logger.info(f"Training dataset {args.train_dataset}")
