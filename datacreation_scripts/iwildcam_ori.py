@@ -52,7 +52,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
     parser.add_argument('--save_file',
-                        default='./datasets/csv/iwildcam_v2.0/train.csv')
+                        default='../data/iwildcam/iwildcam_v2.0/train.csv')
     parser.add_argument('--english_label_path',
                         default='./src/datasets/iwildcam_metadata/labels.csv')
     parser.add_argument('--metadata',
@@ -61,6 +61,6 @@ if __name__ == '__main__':
                         default='../data/iwildcam/iwildcam_v2.0/train')
     args = parser.parse_args()
 
-    os.makedirs('./datasets/csv/iwildcam_v2.0', exist_ok=True)
+    # os.makedirs('./datasets/csv/iwildcam_v2.0', exist_ok=True)
 
     main(args)

@@ -53,42 +53,58 @@ def parse_arguments():
 
     parser.add_argument("--ft_data_test", type=str, default=None, help="Path to csv filewith training data", )
 
+    parser.add_argument("--dataset-type", choices=["webdataset", "csv", "auto"], default="auto",
+                        help="Which type of dataset to process.")
+
     parser.add_argument('--ce_ablation', action=argparse.BooleanOptionalAction)
 
+    ######################################
+    # added args
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--baseline', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--cont_finetune', action=argparse.BooleanOptionalAction)
 
-    parser.add_argument('--progress_eval', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--progress_guid', action=argparse.BooleanOptionalAction)
 
-    parser.add_argument('--progress_train', action=argparse.BooleanOptionalAction)
-
-    parser.add_argument('--progress', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--progress_sample', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--progress_validation', action=argparse.BooleanOptionalAction)
 
     parser.add_argument("--progress_metric", type=str, default='Acc', help="Acc or F1.", )
 
     parser.add_argument("--cluster", type=str, default='', help="cluster method, loss / others", )
+
     parser.add_argument('--ma_progress', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore', action=argparse.BooleanOptionalAction)
 
+    # run randomly guid
     parser.add_argument('--random_guid', action=argparse.BooleanOptionalAction)
 
+    # run under debug mode
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction)
 
-    parser.add_argument('--proportion', action=argparse.BooleanOptionalAction)
-
+    # only run evaluate
     parser.add_argument('--test', action=argparse.BooleanOptionalAction)
 
+    # mix the generated data with original data
+    parser.add_argument('--proportion', action=argparse.BooleanOptionalAction)
+
+    # run on dynamic tau
     parser.add_argument('--tau_curriculum', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--explore_fixguid', action=argparse.BooleanOptionalAction)
 
+    # run uniform set before finding best guidance
     parser.add_argument('--uniform_set', action=argparse.BooleanOptionalAction)
+
+    # run on guid=100 before finding best guidance
+    parser.add_argument('--reshift_distribution', action=argparse.BooleanOptionalAction)
+
+    # including neg samples while running on generated data
+    parser.add_argument('--include_neg', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--scheduler', type=str, default='default', )
 
@@ -97,10 +113,12 @@ def parse_arguments():
     parser.add_argument("--curriculum_epoch", type=int, default=None,
                         help="Number of samples in dataset. Required for webdataset if not available in info file.", )
 
-    parser.add_argument('--self_data', action=argparse.BooleanOptionalAction)
+    parser.add_argument("--wandb_group_name", type=str, default='default', help="wandb group for expr results", )
 
-    parser.add_argument("--dataset-type", choices=["webdataset", "csv", "auto"], default="auto",
-                        help="Which type of dataset to process.")
+    parser.add_argument("--guidance", type=int, default=-1, help="Number of dataloader workers per GPU.")
+
+    parser.add_argument("--slurm_job_id", type=int, default=-1, help="SLURM job id.")
+    ######################################
 
     parser.add_argument("--train-num-samples", type=int, default=None,
                         help="Number of samples in dataset. Required for webdataset if not available in info file.", )
@@ -128,13 +146,7 @@ def parse_arguments():
 
     parser.add_argument("--min_lr", type=float, default=0.0, help="minimum LR for cosine scheduler", )
 
-    parser.add_argument("--wandb_group_name", type=str, default='default', help="wandb group for expr results", )
-
-    parser.add_argument("--guidance", type=int, default=-1, help="Number of dataloader workers per GPU.")
-
     parser.add_argument("--cache_folder", type=str, default='', help="Number of dataloader workers per GPU.")
-
-    parser.add_argument("--slurm_job_id", type=int, default=-1, help="SLURM job id.")
 
     parsed_args = parser.parse_args()
 

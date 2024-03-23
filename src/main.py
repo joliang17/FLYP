@@ -1,6 +1,7 @@
 from ast import arg
 import sys
 import os
+
 sys.path.append(os.getcwd())
 
 import numpy as np
@@ -16,15 +17,16 @@ from src.args import parse_arguments
 from logger_utils import get_logger
 import random
 
+
 def main(args):
 
     ###logging##################################################################
     os.makedirs(args.save + args.exp_name, exist_ok=True)
-    args.save = args.save + args.exp_name + "/" + "_BS" + str(
-        args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
+    args.save = args.save + args.exp_name + "/" + "_BS" + str(args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(
+        args.lr) + "_run" + str(args.run)
     os.makedirs("expt_logs/" + args.exp_name, exist_ok=True)
-    logging_path = "expt_logs/" + args.exp_name + "/" + "_BS" + str(
-        args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
+    logging_path = "expt_logs/" + args.exp_name + "/" + "_BS" + str(args.batch_size) + "_WD" + str(
+        args.wd) + "_LR" + str(args.lr) + "_run" + str(args.run)
     os.makedirs(logging_path, exist_ok=True)
 
     log_filename = logging_path + "/log.log"
@@ -42,15 +44,12 @@ def main(args):
     classification_head = ClassificationHead(normalize=True, weights=None)
     logger.info(args)
     if args.ce_ablation:
-        finetuned_checkpoint = ce_ablation(args, clip_encoder,
-                                            classification_head, logger)
+        finetuned_checkpoint = ce_ablation(args, clip_encoder, classification_head, logger)
     elif args.progress_validation:
-        finetuned_checkpoint = flyp_loss_progress(args, clip_encoder,
-                                            classification_head, logger)
+        finetuned_checkpoint = flyp_loss_progress(args, clip_encoder, classification_head, logger)
 
     else:
-        finetuned_checkpoint = flyp_loss(args, clip_encoder,
-                                            classification_head, logger)
+        finetuned_checkpoint = flyp_loss(args, clip_encoder, classification_head, logger)
 
 
 if __name__ == '__main__':

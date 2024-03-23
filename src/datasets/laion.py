@@ -32,53 +32,73 @@ except ImportError:
 from open_clip import tokenize
 
 
+def logging_input(curinput='', logger=None):
+    if logger is not None:
+        logger.info(curinput)
+    else:
+        print(curinput)
+    return
+
+
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
-                 datalimit=-1, list_selection=None, ori_proportion=None, uniform_set=False, return_guidance=False,
-                 return_img_id=False, only_img_id=False, ):
-        logging.debug(f'Loading csv data from {input_filename}.')
+                 datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False,
+                 return_img_id=False, only_img_id=False, reshift_distribution=False, include_neg=False,logger=None):
+        # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
+        df_pos = df[df['label'] != 0]
+        df_neg = df[df['label'] == 0]
+        len_neg = len(df_neg)
 
-        if uniform_set:
-            # only train on a uniformly distributed dataset
+        ##########################
+        # mixture from original data * image guidance
+        df_ori = None
+        if ori_proportion is not None:
+            df_ori = df[df['guidance'] == 100]
+
+        if reshift_distribution:
+            df = df[df['guidance'] == 100]
             df = df.sample(n=10000, replace=False, ignore_index=True)
-
-            # for sample experiment, only sample few samples from training data
+        
+        # for sample experiment, only sample few samples from training data
         self.only_img_id = only_img_id
         if self.only_img_id:
             # sort the df by img_id
+            # generated img only here
             df = df[df['img_id'] >= 0]
             # df = df.sample(n=10000, replace=False, ignore_index=True) 
             df = df.sort_values(by='img_id', )
 
-        ##########################
-        # mixture from original data * image guidance
-        if ori_proportion is not None:
-            df_ori = df[df['guidance'] == 100]
+        if uniform_guid:
+            # only train on a uniformly distributed dataset
+            df = df[df['guidance'] == 100]
+            df = df.sample(n=30000, replace=False, ignore_index=True)
+
+            logging_input(f'sampling total data {len(df)}.', logger)
 
         ##########################
         # only loading guidance
         if guidance is not None:
+            # only positive is included if guid != 100
             df = df[df['guidance'] == guidance]
             if datalimit != -1 and len(df) > datalimit:
                 df = df.sample(n=datalimit, replace=False, ignore_index=True)
+                logging_input(f'sampling guid={guidance} with {len(df)} samples.', logger)
+            if guidance != 100 and include_neg:
+                # mix with negative samples
+                neg_cnt = min(len_neg, int(len(df) / 2))
+                df_neg_temp = df_neg.sample(n=neg_cnt, replace=False, ignore_index=True)
+                df = pd.concat([df, df_neg_temp])
+                logging_input(f'sampling neg with {len(df_neg_temp)} samples.', logger)
 
-                ##########################
+        ##########################
         # mixture from original data * image guidance
         if ori_proportion is not None:
             num_df = len(df)
             num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
-            logging.info(f'Loading csv data from {input_filename}.')
-
-        if list_selection is not None:
-            df = df[df['label'].isin(list_selection)]
-            # add part of other classes data
-            df_other = df[~df['label'].isin(list_selection)]
-            df_other.sample(frac=0.2, replace=True)
-            logging.info(f"Loading in classes data {len(df)}, out classes data {len(df_other)}")
-            df = pd.concat([df, df_other])
+            logging_input(f'Concatted data {num_df} + {num_ori} = {len(df)}.', logger)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -103,10 +123,11 @@ class CsvDataset(Dataset):
             self.return_label = True
             self.labels = list(map(int, df[label_key].tolist()))
             self.img_path = df["filepath"].tolist()
+            self.prompt = df["title"].tolist()
         self.transforms = transforms
 
         # self.classes = max(self.labels) + 1
-        logging.info(f'Loading data with length {len(self.images)}.')
+        logging_input(f'Loading data with length {len(self.images)}.', logger)
 
     def __len__(self):
         return len(self.captions)
@@ -138,9 +159,11 @@ class CsvDataset(Dataset):
         if self.return_label:
             label = self.labels[idx]
             f_path = self.img_path[idx]
+            f_title = self.prompt[idx]
 
             return_label.append(label)
             return_label.append(f_path)
+            return_label.append(f_title)
 
         if self.return_guidance:
             guidance = self.guidance[idx]
@@ -235,7 +258,7 @@ def get_imagenet(args, preprocess_fns, split):
         sampler = None
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, num_workers=args.workers,
-        sampler=sampler, )
+                                             sampler=sampler, )
 
     return DataInfo(dataloader=dataloader, sampler=sampler)
 
@@ -395,17 +418,17 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     if is_train:
         if not resampled:
             pipeline.extend([detshuffle2(bufsize=_SHARD_SHUFFLE_SIZE, initial=_SHARD_SHUFFLE_INITIAL, seed=args.seed,
-                epoch=shared_epoch, ), wds.split_by_node, wds.split_by_worker, ])
-        pipeline.extend([# at this point, we have an iterator over the shards assigned to each worker at each node
+                                         epoch=shared_epoch, ), wds.split_by_node, wds.split_by_worker, ])
+        pipeline.extend([  # at this point, we have an iterator over the shards assigned to each worker at each node
             tarfile_to_samples_nothrow,  # wds.tarfile_to_samples(handler=log_and_continue),
             wds.shuffle(bufsize=_SAMPLE_SHUFFLE_SIZE, initial=_SAMPLE_SHUFFLE_INITIAL, ), ])
     else:
         pipeline.extend(
-            [wds.split_by_worker, # at this point, we have an iterator over the shards assigned to each worker
-                wds.tarfile_to_samples(handler=log_and_continue), ])
+            [wds.split_by_worker,  # at this point, we have an iterator over the shards assigned to each worker
+             wds.tarfile_to_samples(handler=log_and_continue), ])
     pipeline.extend([wds.select(filter_no_caption), wds.decode("pilrgb", handler=log_and_continue),
-        wds.rename(image="jpg;png", text="txt"), wds.map_dict(image=preprocess_img, text=preprocess_txt),
-        wds.to_tuple("image", "text"), wds.batched(args.batch_size, partial=not is_train), ])
+                     wds.rename(image="jpg;png", text="txt"), wds.map_dict(image=preprocess_img, text=preprocess_txt),
+                     wds.to_tuple("image", "text"), wds.batched(args.batch_size, partial=not is_train), ])
 
     dataset = wds.DataPipeline(*pipeline)
     # import pdb;pdb.set_trace()
@@ -432,7 +455,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
         num_batches = math.ceil(num_samples / args.batch_size)
 
     dataloader = wds.WebLoader(dataset, batch_size=None, shuffle=False, num_workers=args.workers,
-        persistent_workers=True, )
+                               persistent_workers=True, )
 
     # FIXME not clear which approach is better, with_epoch before vs after dataloader?
     # hoping to resolve via https://github.com/webdataset/webdataset/issues/169
@@ -455,8 +478,9 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
-def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_selection=None, ori_proportion=None,
-                    uniform_set=False, return_guidance=False, return_img_id=False, only_img_id=False):
+def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, 
+                    uniform_guid=False, return_guidance=False, return_img_id=False, only_img_id=False,
+                    reshift_distribution=False, include_neg=False, datalimit=-1, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -470,17 +494,19 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, list_
     if not is_train:
         label_key = 'label'
 
-    dataset = CsvDataset(input_filename, preprocess_fn, img_key=args.csv_img_key, caption_key=args.csv_caption_key,
-                         sep=args.csv_separator, label_key=label_key, guidance=guidance, datalimit=args.datalimit,
-                         list_selection=list_selection, uniform_set=uniform_set, return_guidance=return_guidance,
-                         return_img_id=return_img_id, only_img_id=only_img_id, ori_proportion=ori_proportion, )
+    dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
+                         caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
+                         guidance=guidance, datalimit=datalimit,
+                         uniform_guid=uniform_guid, reshift_distribution=reshift_distribution,
+                         return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
+                         ori_proportion=ori_proportion, include_neg=include_neg, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
     shuffle = is_train and sampler is None
 
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=shuffle, num_workers=args.workers,
-        pin_memory=True, sampler=sampler, drop_last=False, )
+                            pin_memory=True, sampler=sampler, drop_last=False, )
     dataloader.num_samples = num_samples
     dataloader.num_batches = len(dataloader)
     # dataloader.num_classes = dataset.classes
@@ -505,16 +531,17 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
 
 
-def get_data(args, preprocess_fns, epoch=0, guidance=None, list_selection=None, ori_proportion=None, uniform_set=False,
-             return_img_id=False):
+def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False, datalimit=-1, 
+             return_img_id=False, reshift_distribution=False, include_neg=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
     data["train_ft"] = get_dataset_fn(args.ft_data, args.dataset_type)(args, preprocess_train, is_train=True,
                                                                        epoch=epoch, guidance=guidance,
-                                                                       list_selection=list_selection,
                                                                        ori_proportion=ori_proportion,
-                                                                       uniform_set=uniform_set,
-                                                                       return_img_id=return_img_id, )
+                                                                       uniform_guid=uniform_guid,
+                                                                       logger=logger, datalimit=datalimit,
+                                                                       reshift_distribution=reshift_distribution,
+                                                                       return_img_id=return_img_id, include_neg=include_neg, )
 
     return data

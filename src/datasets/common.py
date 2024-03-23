@@ -55,8 +55,7 @@ class ImageFolderWithPaths(datasets.ImageFolder):
 
 
 def maybe_dictionarize(batch,
-                       progress_eval=False,
-                       progress_train=False):
+                       progress_guid=False,):
     if isinstance(batch, dict):
         return batch
 
@@ -66,12 +65,11 @@ def maybe_dictionarize(batch,
         batch = {'images': batch[0], 'labels': batch[1], 'metadata': batch[2]}
     elif len(batch) == 4:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
-    elif progress_eval:
-        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3],
-                 'guidance': batch[-1]}
-    elif progress_train:
-        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3],
-                 'guidance': batch[4], 'img_id': batch[-1]}
+    elif len(batch) == 5:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],}
+    elif progress_guid:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],
+                 'guidance': batch[5], 'img_id': batch[-1]}
     else:
         raise ValueError(f'Unexpected number of elements: {len(batch)}')
 
@@ -175,7 +173,7 @@ def get_dataloader(dataset,
                    image_encoder=None):
     if image_encoder is not None:
         feature_dataset = FeatureDataset(is_train, image_encoder, dataset, args.device, args.cache_dir, args.noscale)
-        dataloader = DataLoader(feature_dataset, batch_size=args.batch_size, shuffle=is_train)
+        dataloader = DataLoader(feature_dataset, batch_size=args.batch_size, shuffle=is_train, num_workers=args.workers)
     else:
         dataloader = dataset.train_loader if is_train else dataset.test_loader
     return dataloader
