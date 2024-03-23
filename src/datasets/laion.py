@@ -71,19 +71,8 @@ class CsvDataset(Dataset):
 
         if uniform_guid:
             # only train on a uniformly distributed dataset
-            # df = df.sample(n=10000, replace=False, ignore_index=True)
-            # method1 :
-            # including guid1 : guid2 : guid3 : .. : guidn : neg = 1:1:...:1
-            if include_neg:
-                df_pos_temp = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
-                df_neg_temp = df_neg.sample(n=min(len_neg, 1000), replace=False, ignore_index=True).reset_index(drop=True)
-                df = pd.concat([df_pos_temp, df_neg_temp])
-                logging_input(f'sampling pos data {len(df_pos_temp)}, neg data{len(df_neg_temp)}.', logger)
-            else:
-                # df = df_pos.groupby('guidance').apply(lambda x: x.sample(n=1000, replace=False, )).reset_index(drop=True)
-
-                df = df[df['guidance'] == 100]
-                df = df.sample(n=20000, replace=False, ignore_index=True)
+            df = df[df['guidance'] == 100]
+            df = df.sample(n=30000, replace=False, ignore_index=True)
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
