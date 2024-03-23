@@ -24,10 +24,10 @@ echo "All nodes: ${SLURM_JOB_NODELIST} ${date} ${pwd}"
 # nvidia-smi
 
 current_dir=$(pwd)
-if [[ "$current_dir" == *"zt1/project/tianyi-prj"* ]]; then
+if [[ "$current_dir" != *"/nexus-scratch/"* ]]; then
     # on zaratan cluster
 
-    conda activate flyp
+    conda activate diffu
     root_folder="/scratch/zt1/project/tianyi-prj/user/yliang17/Research"
     saved_ckpt="."
     saved_data="${root_folder}/gene_diffcls"
@@ -42,7 +42,7 @@ else
     saved_data="${root_folder}/diffusion/gene_diffcls"
 fi
 
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=128 --model=ViT-L-14 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="${saved_ckpt}/checkpoints/" --data-location="${saved_data}/data/iwildcam/" --ft_data="${saved_data}/data/iwildcam/iwildcam_v2.0/train.csv" --csv-img-key filepath --csv-caption-key title --exp_name=flyp_loss_base_vitl --workers=4 --baseline  --slurm_job_id=$SLURM_JOB_ID --cache_folder="${root_folder}/cache"
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=128 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="${saved_ckpt}/checkpoints/" --data-location="${saved_data}/data/iwildcam/" --ft_data="${saved_data}/data/iwildcam/iwildcam_v2.0/train.csv" --csv-img-key filepath --csv-caption-key title --exp_name=flyp_loss_base_vitb --workers=4 --baseline  --slurm_job_id=$SLURM_JOB_ID --cache_folder="${root_folder}/cache" --debug
 
 ECODE=$?
 	
