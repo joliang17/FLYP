@@ -101,7 +101,6 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
     # load dataloader
-
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
@@ -122,7 +121,7 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_sample=False, progress_ma=None,
+def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=True, progress_sample=False, progress_ma=None,
                   print_log=True):
     """
     Find best guidance based on guid group
@@ -137,13 +136,16 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
     :param progress_ma:
     :return:
     """
+
+    def rnd_prog(input_progress, ):
+        return np.round(input_progress, 6)
+
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    last_results = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger,
+    _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger,
                             progress_guid=progress_guid, progress_sample=progress_sample)
     str_progress = dict()
     res_progress = dict()
-    cur_stats = dict()
     saved_diff = dict()
 
     if args.progress_metric == 'Acc':
@@ -165,44 +167,59 @@ def progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, 
             else:
                 last_perform[key] = [0] * len(value)
 
-        guidance_i = int(
-            key.replace('Strength ', '').replace('Guidance ', '').replace(' Accuracy', '').replace(' F1', '').replace(
-                ' Values', ''))
+        # guidance value
+        list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
+        guidance_i = copy.deepcopy(key)
+        for replace_word in list_replace:
+            guidance_i = guidance_i.replace(replace_word, '')
+        guidance_i = int(guidance_i)
 
-        # compute moving average of progress
+        # compute moving average of progress based on history
+        # moving average the progress here
+        # adding current
+        weighted_hist_prog = None
         if args.ma_progress and progress_ma is not None:
-            # adding current eval to ma list
-            progress_ma[guidance_i].append(value)
-            # compute for average here
-            value = np.mean(np.array(progress_ma[guidance_i]))
+            if guidance_i not in progress_ma:
+                continue
+            weighted_hist_prog = progress_ma[guidance_i][-1]
 
         if args.progress_metric != 'Prob':
-            guid_diff = np.round(value - last_perform[key], 6)
-            str_progress[f"Guidance {guidance_i}"] = guid_diff
-            res_progress[guidance_i] = value - last_perform[key]
-            cur_stats[guidance_i] = value
+            cur_progress = value - last_perform[key]
+            if weighted_hist_prog is not None:
+                # TODO: exponential moving average
+                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
+
+            str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
+            res_progress[guidance_i] = cur_progress  # for guidance ranking
             if print_log:
-                logger.info(f"Guidance {guidance_i} diff: {guid_diff}")
+                logger.info(f"Guidance {guidance_i} diff: {cur_progress}")
 
         else:
             # progress as relative increase of prob in each image
             value_arr = np.array(value)
             last_arr = np.array(last_perform[key])
-            imgs_diff = np.round(value_arr - last_arr, 6)
-            # relative_diff = imgs_diff / value_arr
-            mean_diff = np.mean(imgs_diff)
-            std_diff = np.std(imgs_diff)
+            cur_progress = value_arr - last_arr
+            if weighted_hist_prog is not None:
+                # TODO: exponential moving average
+                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
 
-            str_progress[f"Guidance {guidance_i}"] = np.round(mean_diff, 6)
-            res_progress[guidance_i] = mean_diff
-            cur_stats[guidance_i] = value
-            saved_diff[guidance_i] = [last_arr, value_arr]
+            # relative_diff = cur_progress / value_arr
+            mean_diff = np.mean(cur_progress)
+            std_diff = np.std(cur_progress)
+
+            str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
+            res_progress[guidance_i] = mean_diff  # for guidance ranking
+            saved_diff[guidance_i] = [last_arr, value_arr]  # saved for analysis
             if print_log:
-                logger.info(f"Guidance {guidance_i}, mean: {np.round(mean_diff, 6)}, std: {np.round(std_diff, 4)}")
+                logger.info(f"Guidance {guidance_i}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+
+        if args.ma_progress and progress_ma is not None:
+            # adding current eval to MA list
+            progress_ma[guidance_i].append(cur_progress)
 
     # pdb.set_trace()
     last_perform = copy.deepcopy(Dict_cur_guidance)
-    return res_progress, str_progress, last_perform, cur_stats, saved_diff
+    return res_progress, str_progress, last_perform, saved_diff
 
 
 def progress_eval_train(model, args, epoch, logger, progress_ma=None):
@@ -422,10 +439,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if args.uniform_set:
         # start with guid found on uniformly distributed dataset
         eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        res_progress, _, last_perform, _, saved_diff = eval_res
-        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True, include_neg=args.include_neg)
+        last_perform = eval_res[2]
+        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
+
+    # record the progress history (prob diff)
+    # when compute the current progress, progress = 0.8 * current + 0.2 * previous progress
+    progress_ma = dict()
 
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
@@ -447,8 +468,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         epoch_stats = {}
         epoch_stats['Epoch'] = epoch
         epoch_stats['epoch'] = epoch
-
-        progress_ma = dict()
 
         id_flyp_loss_sum = 0
         model.train()
@@ -516,10 +535,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
+                        # record beginning progress prob
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 print_log=False)
-                        res_progress, _, last_perform, _, _ = eval_res
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
+
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
@@ -530,8 +551,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = False
 
                         # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
-                        res_progress, _, last_perform, _, saved_diff = eval_res
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_ma=progress_ma)
+                        res_progress, _, last_perform, saved_diff = eval_res
                         # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                         #     pickle.dump(saved_diff, f)
                         # cnt += 1
@@ -666,46 +687,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             # continue
             exit(0)
 
-        # if args.cluster == 'loss':
-        #     from sklearn.cluster import KMeans
-        #     import numpy as np
-        #     # each img id might have multiple loss value
-        #     # reshape list loss to [loss1, loss2] for each image id
-
-        #     list_loss = [item[-1] for item in loss_pairs]
-        #     arr_loss = np.array(list_loss).reshape(-1, 1)
-        #     n_clusters = 7
-        #     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(arr_loss)
-        #     arr_labels = kmeans.labels_
-        #     list_cluster_label = arr_labels.tolist()
-        #     new_loss_pair = [[item[0], item[1], list_cluster_label[i]] for i, item in enumerate(loss_pairs)]
-        #     with open(log_dir + f'/group_guid{epoch}.pkl', 'wb') as f:
-        #         pickle.dump(new_loss_pair, f)
-
         #############################################
 
-        #############################################
-        # Evaluate progress on different group of cur_guidance for this epoch
-        if args.progress_guid:
-            logger.info(f"Progress evaluation ...")
-            _, str_progress, _, _, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                     progress_sample=False, progress_ma=progress_ma)
-
-            str_progress['Epoch'] = epoch
-            # df_str_progress = pd.DataFrame.from_dict(str_progress, orient='index', )
-            # df_str_progress.to_csv(log_dir + f'/progress{epoch}.tsv', sep='\t')
-
-            # # save progress_ma:
-            # with open(log_dir + f'/progress{epoch}.pkl', 'wb') as f:
-            #     pickle.dump([last_perform, progress_ma], f)
-
-            progress_ma = dict()
+        # #############################################
+        # # Evaluate progress on different group of cur_guidance for this epoch
+        # if args.progress_guid:
+        #     logger.info(f"Progress evaluation ...")
+        #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+        #                                              progress_sample=False, progress_ma=progress_ma)
+        #     str_progress = eval_res[1]
+        #     str_progress['Epoch'] = epoch
 
         #############################################
         # Evaluate
         logger.info(f"Formal evaluation ...")
         classification_head_new = generate_class_head(model, args, epoch)
-        eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+        _ = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
 
         ood_acc = 0
         num_datasets = 0
