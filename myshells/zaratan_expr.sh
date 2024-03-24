@@ -17,7 +17,7 @@ echo "To run on ${SLURM_NTASKS} CPU cores across ${SLURM_JOB_NUM_NODES} nodes"
 echo "All nodes: ${SLURM_JOB_NODELIST} ${date} ${pwd}"
 
 current_dir=$(pwd)
-if [[ "$current_dir" == *"zt1/project/tianyi-prj"* ]]; then
+if [[ "$current_dir" != *"/nexus-scratch/"* ]]; then
     # on zaratan cluster
 
     conda activate flyp
