@@ -630,16 +630,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.ma_progress and (num_batches - i) % 100 == 0:
-                logger.info(f"Running progress evaluation for moving average with i={i}")
-                # calculate progress multiple times
-                _, _, _, cur_stats, _ = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True)
-
-                for guid, value in cur_stats.items():
-                    if guid not in progress_ma:
-                        progress_ma[guid] = []
-                    progress_ma[guid].append(value)
-
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
         #############################################
