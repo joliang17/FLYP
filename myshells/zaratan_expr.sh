@@ -20,7 +20,7 @@ current_dir=$(pwd)
 if [[ "$current_dir" != *"/nexus-scratch/"* ]]; then
     # on zaratan cluster
 
-    conda activate flyp
+    conda activate diffu
     scratch_root="/home/yliang17/scratch.tianyi-prj/Research/"
 
     # location of original imgs
@@ -52,7 +52,7 @@ fi
 
 # location of generated train.csv / curriculum.csv / used pkl ..
 META_FOLDER="${root_folder}/data/metadata"
-SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid/"
+SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid_zrt/"
 
 python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v5.pkl"
 
