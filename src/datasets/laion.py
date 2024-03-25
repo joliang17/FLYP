@@ -116,7 +116,10 @@ class CsvDataset(Dataset):
 
         self.return_img_id = return_img_id
         if self.return_img_id:
-            self.img_id = df['img_id'].tolist()
+            if 'img_id' in df.columns:
+                self.img_id = df['img_id'].tolist()
+            else:
+                self.img_id = [100] * len(self.captions)
 
         self.captions_list = []
         for k in range(1, num_columns):
