@@ -343,10 +343,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         args.lr) + "_run" + str(args.run)
     os.makedirs(log_dir, exist_ok=True)
 
-    model = model.cuda()
-    classification_head = classification_head.cuda()
     devices = list(range(torch.cuda.device_count()))
     logger.info('Using devices' + str(devices))
+
+    model = model.cuda()
+    classification_head = classification_head.cuda()
 
     ############################
     # load finetuned model here
