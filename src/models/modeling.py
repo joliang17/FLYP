@@ -12,11 +12,11 @@ class CLIPEncoder(torch.nn.Module):
         super().__init__()
         if args.model == 'ViT-L-14':
             self.model, self.train_preprocess, self.val_preprocess = open_clip.create_model_and_transforms(
-                args.model, pretrained='laion400m_e31')
+                args.model, pretrained='laion400m_e31', pretrained_hf=True, cache_dir=args.cache_folder)
         elif args.model == 'ViT-B-16':
             print("****************Loading ViTB16 from openCLIP****************")
             self.model, self.train_preprocess, self.val_preprocess = open_clip.create_model_and_transforms(
-                args.model, pretrained='laion400m_e31')
+                args.model, pretrained='laion400m_e31', pretrained_hf=True, cache_dir=args.cache_folder)
         else:
             self.model, self.train_preprocess, self.val_preprocess = clip.load(
                 args.model, args.device, jit=False)

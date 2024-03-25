@@ -145,6 +145,9 @@ def parse_arguments():
     parser.add_argument("--get_labeled_csv", default=False, action="store_true", help="get labels from csv.")
 
     parser.add_argument("--min_lr", type=float, default=0.0, help="minimum LR for cosine scheduler", )
+
+    parser.add_argument("--cache_folder", type=str, default='', help="Number of dataloader workers per GPU.")
+
     parsed_args = parser.parse_args()
 
     parsed_args.device = "cuda" if torch.cuda.is_available() else "cpu"
