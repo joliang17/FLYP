@@ -29,10 +29,11 @@ if [[ "$current_dir" != *"/nexus-scratch/"* ]]; then
     cache_folder="${scratch_root}/cache"
 
     # location of generated images
-    shell_root="/home/yliang17/SHELL.tianyi-prj/Research/"
+    shell_root="/afs/shell.umd.edu/project/tianyi-prj/user/yliang17/Research"
     shell_folder="${shell_root}/gene_diffcls"
     IMG_FOLDER="${shell_folder}/data/train_new"
-
+    
+    echo "${current_dir}"
     echo "On zaratan node"
 else
     # on uniacs cluster
@@ -57,7 +58,7 @@ SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid_zrt/"
 python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v5.pkl"
 
 # uniform dataset + guid >= 50
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=300 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}/train.csv" --ft_data_test="${SAVED_FOLDER}/curriculum.csv" --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="flyp_loss_v715_rerun" --curriculum --curriculum_epoch=10 --progress_guid --uniform_set --progress_metric=Prob --scheduler=default --slurm_job_id=$SLURM_JOB_ID
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=300 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}/train.csv" --ft_data_test="${SAVED_FOLDER}/curriculum.csv" --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="flyp_loss_v715_rerun" --curriculum --curriculum_epoch=10 --progress_guid --uniform_set --progress_metric=Prob --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
 
 
 ECODE=$?
