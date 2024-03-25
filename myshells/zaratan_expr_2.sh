@@ -2,7 +2,7 @@
 #SBATCH --job-name=flyp_loss_base_vitl
 #SBATCH --account=tianyi-prj-cmsc
 #SBATCH --time=24:00:00
-#SBATCH --gpus=a100:2
+#SBATCH --gpus=a100:1
 #SBATCH --partition=gpu
 #SBATCH --mem-per-cpu=128
 #SBATCH --ntasks=6
