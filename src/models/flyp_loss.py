@@ -288,7 +288,11 @@ def init_guidance_setting(args, logger, ):
             # using curriculum_epoch to decide the current guidance
             # finish viewing all guidance data during curriculum_epoch
             len_ori = len(df_ori[df_ori['guidance'] == 100])
-            num_batch_ori = int(len_ori / (2*args.batch_size))  # num of batch in non curriculum epoch (update iterations)
+            if args.random_prompt:
+                num_batch_ori = int(len_ori / (2*args.batch_size))  # num of batch in non curriculum epoch (update iterations)
+            else:
+                num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+
             # keep number of iteration during the entire training process the same
             total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
 

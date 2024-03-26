@@ -94,7 +94,10 @@ class CsvDataset(Dataset):
             if guidance == 100 and datalimit == -1 and random_prompt:
                 # loading original data
                 total_len = len(df)
-                df = df.sample(n=int(total_len/2), replace=False, ignore_index=True)
+                list_cols = list(df.columns)
+                list_cols.pop('title')
+                df = df.groupby(list_cols).sample(n=1, replace=False, ignore_index=True)
+                # df = df.sample(n=int(total_len/2), replace=False, ignore_index=True)
                 logging_input(f'sampling half original data with {len(df)} samples.', logger)
 
         ##########################
