@@ -96,6 +96,7 @@ def main(args):
 
         all_cnt = 0
         filtered_cnt = 0
+        print(os.getcwd())
         for cur_sp_f in tqdm(img_sp_folder):
             cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
