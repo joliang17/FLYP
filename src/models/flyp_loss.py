@@ -179,9 +179,10 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
         # adding current
         weighted_hist_prog = None
         if args.ma_progress and progress_ma is not None:
-            if guidance_i not in progress_ma:
-                continue
-            weighted_hist_prog = progress_ma[guidance_i][-1]
+            if guidance_i in progress_ma:
+                weighted_hist_prog = progress_ma[guidance_i][-1]
+            else:
+                progress_ma[guidance_i] = []
 
         if args.progress_metric != 'Prob':
             cur_progress = value - last_perform[key]
@@ -353,9 +354,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if args.cont_finetune:
         model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
                                   f'checkpoint_15.pt')
+
+        # model_path = os.path.join("checkpoints/flyp_loss_v7152/_BS300_WD0.2_LR1e-05_run1",
+        #                           f'checkpoint_1.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)  
+        # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -474,6 +479,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         model = model.cuda()
         # classification_head.train()
 
+        # list_loss_pairs = []
         for i in trange(num_batches):
             if args.test:
                 logger.info(f"Skipping training process")
@@ -492,7 +498,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 if not args.curriculum or (args.curriculum_epoch is not None and epoch > args.curriculum_epoch):
                     # train on baseline without curriculum strategy / curriculum period ends
                     skip_loading = True
-
                 elif not args.progress_guid:
                     # do not select next guid based on progress
                     if args.reshift_distribution and not next_change_guid:
@@ -502,6 +507,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         reshift_distribution = True
                         next_change_guid = True
                         logger.info(f"Running on reshift set (guid={cur_guidance}), set pre_guidance={pre_guidance}")
+                    elif args.uniform_set and not next_change_guid:
+                        cur_guidance = None
+                        uniform_set = True
+                        next_change_guid = True
+                        logger.info(f"Running on uniform set")
                     else:
                         next_change_guid = False
                         # sequentially use guidance
@@ -515,7 +525,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         logger.info(f"randomly select guid {cur_guidance}")
                         cur_guidance_id = list_guidance.index(cur_guidance)
                         cur_str_times = 0
-
                     elif args.curriculum_epoch is None:
                         # sequentially use guidance
                         guid_res = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id, ctype='no_curri')
@@ -525,6 +534,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                   cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
+                    
+                    cur_guidance = 100
+                    cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
                     # select next guid based on progress
                     if args.uniform_set and not next_change_guid:
@@ -596,16 +608,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logit_scale2 = logit_scale2[0]
             ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
+            img_id_loss = list(zip(ft_imgid.detach().cpu().numpy(), ft_clip_loss_peritem.detach().cpu().numpy()))
+            # list_loss_pairs.extend(img_id_loss)
+
             ft_clip_loss = torch.mean(ft_clip_loss_peritem)
             ft_clip_loss.backward()
             optimizer.step()
-
-            if args.cluster == 'loss':
-                # add training loss for clustering
-                loss_array = ft_clip_loss_peritem.cpu().clone().detach().tolist()
-                imgid_array = ft_imgid.tolist()
-                cur_loss_pair = list(zip(imgid_array, loss_array))
-                loss_pairs.extend(cur_loss_pair)
 
             if args.scheduler == 'crestart':
                 scheduler.step(epoch)
@@ -630,6 +638,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
+        # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
+        #     pickle.dump(list_loss_pairs, f)
+
+        # pdb.set_trace()
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
         #############################################
