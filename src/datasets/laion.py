@@ -42,7 +42,7 @@ def logging_input(curinput='', logger=None):
 
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
-                 datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False,
+                 datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False, random_prompt=False, 
                  return_img_id=False, only_img_id=False, reshift_distribution=False, include_neg=False,logger=None):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
@@ -90,6 +90,12 @@ class CsvDataset(Dataset):
                 df_neg_temp = df_neg.sample(n=neg_cnt, replace=False, ignore_index=True)
                 df = pd.concat([df, df_neg_temp])
                 logging_input(f'sampling neg with {len(df_neg_temp)} samples.', logger)
+            
+            if guidance == 100 and datalimit == -1 and random_prompt:
+                # loading original data
+                total_len = len(df)
+                df = df.sample(n=int(total_len/2), replace=False, ignore_index=True)
+                logging_input(f'sampling half original data with {len(df)} samples.', logger)
 
         ##########################
         # mixture from original data * image guidance
@@ -487,7 +493,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, 
                     uniform_guid=False, return_guidance=False, return_img_id=False, only_img_id=False,
-                    reshift_distribution=False, include_neg=False, datalimit=-1, logger=None):
+                    reshift_distribution=False, include_neg=False, datalimit=-1, random_prompt=False, logger=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -506,7 +512,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
                          guidance=guidance, datalimit=datalimit,
                          uniform_guid=uniform_guid, reshift_distribution=reshift_distribution,
                          return_guidance=return_guidance, return_img_id=return_img_id, only_img_id=only_img_id,
-                         ori_proportion=ori_proportion, include_neg=include_neg, )
+                         ori_proportion=ori_proportion, include_neg=include_neg, random_prompt=random_prompt, )
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
@@ -539,7 +545,7 @@ def get_dataset_fn(data_path, dataset_type):
 
 
 def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False, datalimit=-1, 
-             return_img_id=False, reshift_distribution=False, include_neg=False):
+             return_img_id=False, reshift_distribution=False, include_neg=False, random_prompt=False):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -549,6 +555,7 @@ def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_prop
                                                                        uniform_guid=uniform_guid,
                                                                        logger=logger, datalimit=datalimit,
                                                                        reshift_distribution=reshift_distribution,
-                                                                       return_img_id=return_img_id, include_neg=include_neg, )
+                                                                       return_img_id=return_img_id, include_neg=include_neg, 
+                                                                       random_prompt=random_prompt,)
 
     return data

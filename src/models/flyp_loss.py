@@ -104,7 +104,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
-                             reshift_distribution=reshift_distribution, logger=logger)
+                             reshift_distribution=reshift_distribution, random_prompt=args.random_prompt, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -288,7 +288,7 @@ def init_guidance_setting(args, logger, ):
             # using curriculum_epoch to decide the current guidance
             # finish viewing all guidance data during curriculum_epoch
             len_ori = len(df_ori[df_ori['guidance'] == 100])
-            num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+            num_batch_ori = int(len_ori / (2*args.batch_size))  # num of batch in non curriculum epoch (update iterations)
             # keep number of iteration during the entire training process the same
             total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
 
@@ -498,7 +498,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 skip_loading = False
                 if not args.curriculum or (args.curriculum_epoch is not None and epoch > args.curriculum_epoch):
                     # train on baseline without curriculum strategy / curriculum period ends
-                    skip_loading = True
+                    # skip_loading = True
+                    skip_loading = False
                 elif not args.progress_guid:
                     # do not select next guid based on progress
                     if args.reshift_distribution and not next_change_guid:
