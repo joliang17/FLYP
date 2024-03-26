@@ -78,7 +78,7 @@ class CsvDataset(Dataset):
 
         ##########################
         # only loading guidance
-        if guidance is not None:
+        if guidance is not None and 'guidance' in df.columns:
             # only positive is included if guid != 100
             df = df[df['guidance'] == guidance]
             if datalimit != -1 and len(df) > datalimit:
@@ -107,12 +107,19 @@ class CsvDataset(Dataset):
 
         self.return_guidance = return_guidance
         if self.return_guidance:
-            self.guidance = df['guidance'].tolist()
-            self.img_trans = T.ToPILImage()
+            if 'guidance' in df.columns:
+                self.guidance = df['guidance'].tolist()
+            else:
+                self.guidance = [100] * len(self.captions)
+
+        self.img_trans = T.ToPILImage()
 
         self.return_img_id = return_img_id
         if self.return_img_id:
-            self.img_id = df['img_id'].tolist()
+            if 'img_id' in df.columns:
+                self.img_id = df['img_id'].tolist()
+            else:
+                self.img_id = [100] * len(self.captions)
 
         self.captions_list = []
         for k in range(1, num_columns):
