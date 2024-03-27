@@ -94,12 +94,12 @@ class CsvDataset(Dataset):
             if guidance == 100 and datalimit == -1 and random_prompt:
                 # loading original data
                 # method 1
-                df['sp_name'] = df['title'].apply(lambda x: x.replace('a photo of ', '').replace(' in the wild.', '').replace('.', ''))
-                del df['title']
-                list_cols = list(df.columns)
-                df.drop_duplicates(subset=list_cols, keep='last', inplace=True)
-                iwildcam_template = [lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."]
-                df['title'] = df['sp_name'].apply(lambda x: random.choice(iwildcam_template)(x))
+                # df['sp_name'] = df['title'].apply(lambda x: x.replace('a photo of ', '').replace(' in the wild.', '').replace('.', ''))
+                # del df['title']
+                # list_cols = list(df.columns)
+                # df.drop_duplicates(subset=list_cols, keep='last', inplace=True)
+                # iwildcam_template = [lambda c: f"a photo of {c}.", lambda c: f"{c} in the wild."]
+                # df['title'] = df['sp_name'].apply(lambda x: random.choice(iwildcam_template)(x))
 
                 # method 2
                 # total_len = len(df)
