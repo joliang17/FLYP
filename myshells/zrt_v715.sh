@@ -28,11 +28,6 @@ if [[ "$current_dir" != *"/nexus-scratch/"* ]]; then
     # location of cache files
     cache_folder="${scratch_root}/cache"
 
-    # location of generated images
-    shell_root="/afs/shell.umd.edu/project/tianyi-prj/user/yliang17/Research"
-    shell_folder="${shell_root}/gene_diffcls"
-    IMG_FOLDER="${shell_folder}/data/train_new"
-    
     echo "${current_dir}"
     echo "On zaratan node"
 else
@@ -45,13 +40,10 @@ else
     root_folder=".."
     # location of cache files
     cache_folder="${scratch_root}/cache"
-
-    # location of generated images
-    IMG_FOLDER="${root_folder}/data/train_new"
 fi
 
-
 # location of generated train.csv / curriculum.csv / used pkl ..
+IMG_FOLDER="${root_folder}/data/train_new"
 META_FOLDER="${root_folder}/data/metadata"
 SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid/"
 
