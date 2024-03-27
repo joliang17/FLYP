@@ -138,8 +138,6 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             if 'image_paths' in data:
                 image_paths = data['image_paths']
 
-            print(type(x))
-            print(x.shape)
             logits = utils.get_logits(x, model, classification_head)
 
             projection_fn = getattr(dataset, 'project_logits', None)

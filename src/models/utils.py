@@ -114,9 +114,8 @@ def get_logits(inputs, classifier, classification_head):
         classifier = classifier.to(inputs.device)
         classification_head = classification_head.to(inputs.device)
     feats = classifier(inputs)
-    pdb.set_trace()
-    print(type(feats))
-    print(feats)
+    if isinstance(feats, tuple):
+        feats = feats[0]
     return classification_head(feats)
 
 
