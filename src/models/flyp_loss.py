@@ -188,7 +188,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             cur_progress = value - last_perform[key]
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
-                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
+                cur_progress = 0.5 * cur_progress + 0.5 * weighted_hist_prog
 
             str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
             res_progress[guidance_i] = cur_progress  # for guidance ranking
@@ -566,9 +566,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_ma=progress_ma)
                         res_progress, _, last_perform, saved_diff = eval_res
-                        # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                        #     pickle.dump(saved_diff, f)
-                        # cnt += 1
+                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                        cnt += 1
 
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
