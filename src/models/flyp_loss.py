@@ -647,7 +647,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Saving model
-        if args.save is not None and not args.ma_progress:
+        if args.save is not None:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
             torch.save({'epoch': epoch, 'cur_guidance': cur_guidance, 'cur_str_times': cur_str_times,
