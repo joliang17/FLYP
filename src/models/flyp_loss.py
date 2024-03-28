@@ -188,7 +188,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             cur_progress = value - last_perform[key]
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
-                cur_progress = 0.5 * cur_progress + 0.5 * weighted_hist_prog
+                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
 
             str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
             res_progress[guidance_i] = cur_progress  # for guidance ranking
@@ -200,9 +200,11 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             value_arr = np.array(value)
             last_arr = np.array(last_perform[key])
             cur_progress = value_arr - last_arr
+            saved_diff[guidance_i] = copy.deepcopy(cur_progress)  # saved for analysis
+            
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
-                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
+                cur_progress = 0.7 * cur_progress + 0.3 * weighted_hist_prog
 
             # relative_diff = cur_progress / value_arr
             mean_diff = np.mean(cur_progress)
@@ -210,7 +212,6 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
 
             str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
             res_progress[guidance_i] = mean_diff  # for guidance ranking
-            saved_diff[guidance_i] = [last_arr, value_arr]  # saved for analysis
             if print_log:
                 logger.info(f"Guidance {guidance_i}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
 
