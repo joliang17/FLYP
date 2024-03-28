@@ -48,7 +48,7 @@ SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid/"
 python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v5.pkl" --data_folder="${root_folder}"
 
 # uniform dataset + guid >= 50
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=200 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="v715" --curriculum --curriculum_epoch=10 --progress_guid --uniform_set --progress_metric=Prob --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=100 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="v715" --curriculum --curriculum_epoch=10 --progress_guid --uniform_set --progress_metric=Prob --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
 
 
 ECODE=$?
