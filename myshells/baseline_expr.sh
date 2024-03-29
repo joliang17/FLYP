@@ -24,5 +24,5 @@ SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_5_analysis/"
 
 
 # Use avg of prob diff
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=200 --model=ViT-B/16 --eval-datasets=IWildCamOOD --template=iwildcam_template --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}train.csv" --csv-img-key filepath --csv-caption-key title --exp_name="best_ever" --scheduler=default --progress_guid --progress_metric=Prob --curriculum --curriculum_epoch=10 --slurm_job_id=$SLURM_JOB_ID --debug --test
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=100 --model=ViT-B/16 --eval-datasets=IWildCamOOD --template=iwildcam_template --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}train.csv" --csv-img-key filepath --csv-caption-key title --exp_name="noisy_label_loss" --scheduler=default --baseline --slurm_job_id=$SLURM_JOB_ID --debug --workers=4 --cont_finetune
 
