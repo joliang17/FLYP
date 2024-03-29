@@ -94,7 +94,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     if progress_guid:
         # run on part of training data & only pos samples
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                     only_img_id=True, return_guidance=True, return_img_id=True, ).dataloader
+                                     return_guidance=True, return_img_id=True, ).dataloader
 
 
     else:
