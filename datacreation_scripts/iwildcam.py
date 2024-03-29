@@ -144,18 +144,23 @@ def main(args):
     list_guid_img_name = list(df_count[df_count > 1].index)  # largest 7715
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
 
-    list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  img id start from
+    list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  non enhanced imgs
     Dict_img_id_ori = {list_ori_guid[i]: i + 1 for i in range(len(list_ori_guid))}
-
     df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
-    # select image_id with all guidance
-    print(f"selecting images with all guidance for guidance selection")
-    df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
-    df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
-    sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
-    df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
-    df_sel = df_sel.groupby(['img_name', 'guidance']).apply(lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+    if not args.sample_guid:
+        # select image_id with all guidance
+        print(f"selecting images with all guidance for guidance selection")
+        df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
+        df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
+        sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
+        df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
+        df_sel = df_sel.groupby(['img_name', 'guidance']).apply(lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+    else:
+        # select equal number of guidance for each seed images
+        # select 1 generated images per guidance for each samples
+        print(f"selecting images with equal number of guidance for guidance selection")
+        df_sel = df.groupby(['img_name', 'guidance']).sample(n=1, replace=False, ignore_index=True, random_state=42).reset_index(drop=True)
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
@@ -173,6 +178,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--sample_guid', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
     parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
