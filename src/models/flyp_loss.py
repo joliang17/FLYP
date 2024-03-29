@@ -472,7 +472,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                 ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, epoch=epoch, )
                 ft_iterator = iter(ft_dataloader)
-                num_batches = len(ft_dataloader)
+                # num_batches = len(ft_dataloader)
 
         logger.info(f"Epoch : {epoch}")
         epoch_stats = {}
