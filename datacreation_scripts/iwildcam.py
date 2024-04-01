@@ -162,17 +162,17 @@ def main(args):
         # select equal number of guidance for each seed images
         # select 1 generated images per guidance for each samples
         print(f"selecting images with equal number of guidance for guidance selection")
-        df_sel = df.groupby(['img_name', 'guidance']).sample(n=1, replace=False, random_state=42).reset_index(drop=True)
-        pdb.set_trace()
+        df = df.groupby(['img_name', 'guidance']).sample(n=1, replace=False, random_state=42).reset_index(drop=True)
+        df_sel = df.copy()
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
-    # df_final = df_final[df_final['guidance'] >= 50]
+    df_final = df_final[df_final['guidance'] >= 50]
     print(f'Data for training: {len(df_final)}')
     df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
 
     df_sel_final = merge_with_prompt(df_sel, label_to_name, merge_type='curriculum')
-    # df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
+    df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
     print(f'Data for curriculum: {len(df_sel_final)}')
     df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 

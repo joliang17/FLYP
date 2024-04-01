@@ -204,7 +204,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
-                cur_progress = 0.7 * cur_progress + 0.3 * weighted_hist_prog
+                cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
 
             # relative_diff = cur_progress / value_arr
             mean_diff = np.mean(cur_progress)
@@ -444,12 +444,19 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     pre_guidance = None
 
     if args.uniform_set:
-        # start with guid found on uniformly distributed dataset
-        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        last_perform = eval_res[2]
+        if args.progress_guid:
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+            last_perform = eval_res[2]
+
+        elif args.progress_sample:
+            # start with samples found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+            last_perform = eval_res[2]
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
+
 
     # record the progress history (prob diff)
     # when compute the current progress, progress = 0.8 * current + 0.2 * previous progress
@@ -500,7 +507,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 if not args.curriculum or (args.curriculum_epoch is not None and epoch > args.curriculum_epoch):
                     # train on baseline without curriculum strategy / curriculum period ends
                     skip_loading = True
-                elif not args.progress_guid:
+                elif (not args.progress_guid) and (not args.progress_sample):
                     # do not select next guid based on progress
                     if args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -554,7 +561,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
-
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
@@ -591,6 +597,47 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
+                elif args.progress_sample:
+                    # select next guid based on progress
+                    if args.uniform_set and not next_change_guid:
+                        # not training progress eval to find the best guid
+                        # run training on uniformly distributed dataset first
+                        # evaluate the improvement on this uniformly distributed dataset
+                        # use the largest improvement as the next guid
+                        cur_guidance = None
+                        uniform_set = True
+                        next_change_guid = True
+                        # record beginning progress prob
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
+                        logger.info(f"Running on uniform set")
+
+                    elif args.reshift_distribution and not next_change_guid:
+                        # run training on guid=100 dataset first
+                        cur_guidance = 100
+                        reshift_distribution = True
+                        next_change_guid = True
+                        logger.info(f"Running on reshift set (guid={cur_guidance})")
+                    else:
+                        next_change_guid = False
+
+                        # find the largest guidance based on progress
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, progress_ma=progress_ma)
+                        res_progress, _, last_perform, saved_diff = eval_res
+                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                        cnt += 1
+
+                        # find samples with largest progress
+                        # TODO:
+                        list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                        list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                        largest_guid = list_progress[0]
+
+                        cur_guidance = next_guid[0]
+                        cur_guidance_id = list_guidance.index(cur_guidance)
+                        cur_str_times = 0
 
                 if not skip_loading:
                     ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
