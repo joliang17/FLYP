@@ -121,6 +121,95 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
+def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_class=False, log_dir=None):
+    """
+
+    :param model:
+    :param args:
+    :param stats:
+    :param epoch:
+    :param logger:
+    :param print_log:
+    :param print_class:
+    :param log_dir:
+    :return:
+    """
+
+    epoch_stats = {}
+    epoch_stats['Epoch'] = epoch
+    epoch_stats['epoch'] = epoch
+    classification_head_new = generate_class_head(model, args, epoch)
+    _ = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+
+    ood_acc = 0
+    num_datasets = 0
+    for k, v in epoch_stats.items():
+        if 'Accuracy' in k and 'Class' not in k:
+            if k == 'ImageNet Accuracy':
+                # ignore the ID acc term
+                continue
+            ood_acc += v
+            num_datasets += 1
+    if num_datasets != 0:
+        ood_acc = ood_acc / num_datasets
+    else:
+        ood_acc = 0
+
+    if print_class and log_dir is not None:
+        # class acc:
+        class_stats = dict()
+        ind_dataset = {k: i for i, k in enumerate(args.eval_datasets)}
+        for k, v in epoch_stats.items():
+            if 'Class' not in k:
+                continue
+            if k == 'ImageNet Accuracy':
+                # ignore the ID acc term
+                continue
+
+            list_k = k.split(' Class ')
+            dataset_n = list_k[0]
+            ds_id = ind_dataset[dataset_n]
+            if 'Accuracy' in k:
+                cls_label = list_k[1].replace(' Accuracy', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][2 * ds_id] = v
+            elif 'Number' in k:
+                cls_label = list_k[1].replace(' Number', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][2 * ds_id + 1] = v
+
+        list_colum = [''] * 2 * len(args.eval_datasets)
+        for i in range(len(args.eval_datasets)):
+            list_colum[2 * i] = args.eval_datasets[i]
+            list_colum[2 * i + 1] = args.eval_datasets[i] + ' Count'
+
+        class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=list_colum)
+        class_stats_df.to_csv(log_dir + f'/class_stats{epoch}.tsv', sep='\t')
+
+    epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
+    if print_log:
+        logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
+    # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
+    # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
+    epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
+    if log_dir is not None:
+        stats.append(epoch_stats)
+        stats_df = pd.DataFrame(stats)
+        stats_df.to_csv(log_dir + '/stats.tsv', sep='\t')
+
+    ################################################
+    # Evaluation logging
+    if not args.debug:
+        wandb.log(epoch_stats)
+    return stats
+
+
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=True, progress_sample=False, progress_ma=None,
                   print_log=True):
     """
@@ -597,6 +686,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id = list_guidance.index(cur_guidance)
                         cur_str_times = 0
 
+                        # eval performance on ood dataset
+                        _ = general_eval(model, args, stats, epoch, logger=logger, )
+
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
                 elif args.progress_sample:
@@ -764,74 +856,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #############################################
         # Evaluate
         logger.info(f"Formal evaluation ...")
-        classification_head_new = generate_class_head(model, args, epoch)
-        _ = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-
-        ood_acc = 0
-        num_datasets = 0
-        for k, v in epoch_stats.items():
-            if 'Accuracy' in k and 'Class' not in k:
-                if k == 'ImageNet Accuracy':
-                    # ignore the ID acc term
-                    continue
-                ood_acc += v
-                num_datasets += 1
-        if num_datasets != 0:
-            ood_acc = ood_acc / num_datasets
-        else:
-            ood_acc = 0
-
-        ################################################
-        # class acc:
-        class_stats = dict()
-        ind_dataset = {k: i for i, k in enumerate(args.eval_datasets)}
-        for k, v in epoch_stats.items():
-            if 'Class' not in k:
-                continue
-            if k == 'ImageNet Accuracy':
-                # ignore the ID acc term
-                continue
-
-            list_k = k.split(' Class ')
-            dataset_n = list_k[0]
-            ds_id = ind_dataset[dataset_n]
-            if 'Accuracy' in k:
-                cls_label = list_k[1].replace(' Accuracy', '')
-                cur_label_name = f"Class {cls_label}"
-                if cur_label_name not in class_stats:
-                    cur_res = [0] * 2 * len(args.eval_datasets)
-                    class_stats[cur_label_name] = cur_res
-                class_stats[cur_label_name][2 * ds_id] = v
-            elif 'Number' in k:
-                cls_label = list_k[1].replace(' Number', '')
-                cur_label_name = f"Class {cls_label}"
-                if cur_label_name not in class_stats:
-                    cur_res = [0] * 2 * len(args.eval_datasets)
-                    class_stats[cur_label_name] = cur_res
-                class_stats[cur_label_name][2 * ds_id + 1] = v
-
-        list_colum = [''] * 2 * len(args.eval_datasets)
-        for i in range(len(args.eval_datasets)):
-            list_colum[2 * i] = args.eval_datasets[i]
-            list_colum[2 * i + 1] = args.eval_datasets[i] + ' Count'
-
-        class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=list_colum)
-        class_stats_df.to_csv(log_dir + f'/class_stats{epoch}.tsv', sep='\t')
-
-        epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
-        logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
-        logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
-        epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-        epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-
-        stats.append(epoch_stats)
-        stats_df = pd.DataFrame(stats)
-        stats_df.to_csv(log_dir + '/stats.tsv', sep='\t')
-
-        ################################################
-        # Evaluation logging
-        if not args.debug:
-            wandb.log(epoch_stats)
+        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True, log_dir=log_dir)
 
     if args.save is not None:
         return model_path
