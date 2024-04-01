@@ -210,8 +210,8 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     return stats
 
 
-def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=True, progress_sample=False, progress_ma=None,
-                  print_log=True):
+def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=True, progress_sample=False,
+                  progress_ma=None, print_log=True):
     """
     Find best guidance based on guid group
     :param print_log:
@@ -231,8 +231,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
 
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger,
-                            progress_guid=progress_guid, progress_sample=progress_sample)
+    _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
+                 progress_sample=progress_sample)
     str_progress = dict()
     res_progress = dict()
     saved_diff = dict()
@@ -290,7 +290,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             last_arr = np.array(last_perform[key])
             cur_progress = value_arr - last_arr
             saved_diff[guidance_i] = [copy.deepcopy(value_arr), copy.deepcopy(last_arr)]  # saved for analysis
-            
+
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
                 cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
@@ -450,8 +450,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #                           f'checkpoint_1.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)  
-        # model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -547,7 +546,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
 
-
     # record the progress history (prob diff)
     # when compute the current progress, progress = 0.8 * current + 0.2 * previous progress
     progress_ma = dict()
@@ -633,7 +631,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                   cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
-                    
+
                     cur_guidance = 100
                     cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
@@ -661,7 +659,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = False
 
                         # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True, progress_ma=progress_ma)
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 progress_ma=progress_ma)
                         res_progress, _, last_perform, saved_diff = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
@@ -717,7 +716,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = False
 
                         # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, progress_ma=progress_ma)
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
+                                                 progress_ma=progress_ma)
                         res_progress, _, last_perform, saved_diff = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
@@ -785,7 +785,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 if i % 20 == 0:
                     # record beginning progress prob
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                print_log=False, )
+                                             print_log=False, )
                     saved_diff = eval_res[-1]
                     if next_change_guid:
                         with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
@@ -794,7 +794,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
                     save_cnt += 1
-
 
         # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
         #     pickle.dump(list_loss_pairs, f)
@@ -821,8 +820,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             # for epoch in range(0, 1):
             model = clip_encoder
             epoch = 19
-            model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1",
-                                    f'checkpoint_19.pt')
+            model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
 
             # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
             #                         f'checkpoint_{epoch}.pt')
@@ -861,7 +859,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #############################################
         # Evaluate
         logger.info(f"Formal evaluation ...")
-        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True, log_dir=log_dir)
+        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
+                             log_dir=log_dir)
 
     if args.save is not None:
         return model_path
