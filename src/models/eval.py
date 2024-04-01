@@ -32,14 +32,24 @@ def process_train_stat(results, train_stats, logger, dataset_name=''):
 
 
 def eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=None):
+    """
+    return image id & guid
+    :param image_classifier:
+    :param args:
+    :param classification_head:
+    :param logger:
+    :return:
+    """
     model = image_classifier
     input_key = 'images'
 
     model.eval()
     classification_head.eval()
 
-    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, is_train=False, guidance=100,
-                                 return_guidance=True, return_img_id=True, logger=logger).dataloader
+    # run on given test set
+    # guidance and img id are required!
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
+                                 return_guidance=True, return_img_id=True, ).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -62,23 +72,16 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
             all_prob = F.softmax(logits, dim=-1)
             for i, img_id_t in enumerate(img_ids):
                 img_id = img_id_t.item()
-                cur_label = y[i].item()
-                cur_probs = all_prob[i].detach().cpu().numpy()
-                cur_prob = all_prob[i, cur_label].item()
+                cur_y = y[i].item()
+                cur_prob = all_prob[i, cur_y].item()
+                # cur_probs = all_prob[i].detach().cpu().numpy()
                 cur_guid = guidances[i].item()
-                cur_title = title[i]
                 if img_id not in dict_preds:
                     dict_preds[img_id] = []
-                dict_preds[img_id].append([cur_label, cur_title, cur_guid, cur_prob, cur_probs])
+                dict_preds[img_id].append([cur_y, cur_guid, cur_prob, ])
 
     metrics = {}
-    # dict_best_guid = dict()
-    # for img_id,list_guid_prob in dict_preds.items():
-    #     list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
-    #     best_guid = list_guid_prob[0][0]
-    #     dict_best_guid[img_id] = best_guid
-
-    metrics['guid_info'] = dict_preds
+    metrics['progress_res'] = dict_preds
     return metrics
 
 
@@ -92,7 +95,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     classification_head.eval()
 
     if progress_guid:
-        # run on part of training data & only pos samples
+        # run on given test set
         dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
                                      return_guidance=True, return_img_id=True, ).dataloader
 
@@ -172,6 +175,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_class[cls_i][1] += cur_num
 
                 if progress_guid:
+                    # calculate accuracy / F1 for each guid
                     guidances = torch.unique(guidance)
                     for guid_i in guidances:
                         guid_i = guid_i.item()
@@ -246,7 +250,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     dict_guid_prob[guid] = []
                 dict_guid_prob[guid].append([prob, img_id])
 
-        metrics['img_guid_pair'] = dict_guid_prob
+        metrics['progress_res'] = dict_guid_prob
 
     if 'top1' not in metrics:
         metrics['top1'] = top1
@@ -338,21 +342,21 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
     if progress_sample:
         # Evaluate the best guidance on training dataset for each image
-        logging_input(f"Evaluating on training dataset", logger)
+        logging_input(f"Evaluating on sample level", logger)
         results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
 
-        train_stats[f"guid_info"] = results['guid_info']
+        train_stats[f"progress_res"] = results['progress_res']
         return info
 
     if progress_guid:
         # load specific curriculum data and evaluate performance on group of guidance
-        logging_input(f"Evaluating on curriculum evaluation dataset", logger)
+        logging_input(f"Evaluating on guid level", logger)
         dataset = None
 
         results = eval_single_dataset(image_classifier, dataset, args, classification_head, logger=logger,
                                       progress_guid=True, )
-        if 'img_guid_pair' in results:
-            dict_guid_prob = results['img_guid_pair']
+        if 'progress_res' in results:
+            dict_guid_prob = results['progress_res']
             dict_guid_prob_new = {key: [item[0] for item in values] for key, values in dict_guid_prob.items()}
             dict_guid_mean = {key: np.mean(values) for key, values in dict_guid_prob_new.items()}
             dict_guid_std = {key: np.std(values) for key, values in dict_guid_prob_new.items()}

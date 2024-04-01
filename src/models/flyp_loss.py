@@ -92,7 +92,7 @@ def explore_guid(args, epoch, logger, largest_guid, list_progress):
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, epoch=0, ori_proportion=None,
-              uniform_guid=False, reshift_distribution=False, include_neg=False):
+              uniform_guid=False, reshift_distribution=False, include_neg=False, list_imgs=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -102,7 +102,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
 
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-                             return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance,
+                             return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
                              reshift_distribution=reshift_distribution, logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
@@ -237,79 +237,106 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
     res_progress = dict()
     saved_diff = dict()
 
-    if args.progress_metric == 'Acc':
-        keywords = 'Accuracy'
-    elif args.progress_metric == 'Prob':
-        keywords = 'Values'
-    else:
-        keywords = 'F1'
-    logger.info(f"Computing progress based on metric {keywords}")
-
-    for key, value in Dict_cur_guidance.items():
-        if 'Number' in key:
-            continue
-        if keywords not in key:
-            continue
-        if key not in last_perform:
-            if isinstance(value, float):
-                last_perform[key] = 0
-            else:
-                last_perform[key] = [0] * len(value)
-
-        # guidance value
-        list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
-        guidance_i = copy.deepcopy(key)
-        for replace_word in list_replace:
-            guidance_i = guidance_i.replace(replace_word, '')
-        guidance_i = int(guidance_i)
-
-        # compute moving average of progress based on history
-        # moving average the progress here
-        # adding current
-        weighted_hist_prog = None
-        if args.ma_progress and progress_ma is not None:
-            if guidance_i in progress_ma:
-                weighted_hist_prog = progress_ma[guidance_i][-1]
-            else:
-                progress_ma[guidance_i] = []
-
-        if args.progress_metric != 'Prob':
-            cur_progress = value - last_perform[key]
-            if weighted_hist_prog is not None:
-                # TODO: exponential moving average
-                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
-
-            str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
-            res_progress[guidance_i] = cur_progress  # for guidance ranking
-            if print_log:
-                logger.info(f"Guidance {guidance_i} diff: {cur_progress}")
-
+    if progress_guid:
+        if args.progress_metric == 'Acc':
+            keywords = 'Accuracy'
+        elif args.progress_metric == 'Prob':
+            keywords = 'Values'
         else:
-            # progress as relative increase of prob in each image
-            value_arr = np.array(value)
-            last_arr = np.array(last_perform[key])
-            cur_progress = value_arr - last_arr
-            saved_diff[guidance_i] = [copy.deepcopy(value_arr), copy.deepcopy(last_arr)]  # saved for analysis
+            keywords = 'F1'
+        logger.info(f"Computing progress based on metric {keywords}")
 
-            if weighted_hist_prog is not None:
-                # TODO: exponential moving average
-                cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
+        for key, value in Dict_cur_guidance.items():
+            if 'Number' in key:
+                continue
+            if keywords not in key:
+                continue
+            if key not in last_perform:
+                if isinstance(value, float):
+                    last_perform[key] = 0
+                else:
+                    last_perform[key] = [0] * len(value)
 
-            # relative_diff = cur_progress / value_arr
-            mean_diff = np.mean(cur_progress)
-            std_diff = np.std(cur_progress)
+            # guidance value
+            list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
+            guidance_i = copy.deepcopy(key)
+            for replace_word in list_replace:
+                guidance_i = guidance_i.replace(replace_word, '')
+            guidance_i = int(guidance_i)
 
-            str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-            res_progress[guidance_i] = mean_diff  # for guidance ranking
-            if print_log:
-                logger.info(f"Guidance {guidance_i}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+            # compute moving average of progress based on history
+            # moving average the progress here
+            # adding current
+            weighted_hist_prog = None
+            if args.ma_progress and progress_ma is not None:
+                if guidance_i in progress_ma:
+                    weighted_hist_prog = progress_ma[guidance_i][-1]
+                else:
+                    progress_ma[guidance_i] = []
 
-        if args.ma_progress and progress_ma is not None:
-            # adding current eval to MA list
-            progress_ma[guidance_i].append(cur_progress)
+            if args.progress_metric != 'Prob':
+                cur_progress = value - last_perform[key]
+                if weighted_hist_prog is not None:
+                    # TODO: exponential moving average
+                    cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
 
-    # pdb.set_trace()
-    last_perform = copy.deepcopy(Dict_cur_guidance)
+                str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
+                res_progress[guidance_i] = cur_progress  # for guidance ranking
+                if print_log:
+                    logger.info(f"Guidance {guidance_i} diff: {cur_progress}")
+
+            else:
+                # progress as relative increase of prob in each image
+                value_arr = np.array(value)
+                last_arr = np.array(last_perform[key])
+                cur_progress = value_arr - last_arr
+                saved_diff['progress_res'] = [value_arr.copy(), last_arr.copy()]  # saved for analysis
+
+                if weighted_hist_prog is not None:
+                    # TODO: exponential moving average
+                    cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
+
+                # relative_diff = cur_progress / value_arr
+                mean_diff = np.mean(cur_progress)
+                std_diff = np.std(cur_progress)
+
+                str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
+                res_progress[guidance_i] = mean_diff  # for guidance ranking
+                if print_log:
+                    logger.info(f"Guidance {guidance_i}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+
+            if args.ma_progress and progress_ma is not None:
+                # adding current eval to MA list
+                progress_ma[guidance_i].append(cur_progress)
+
+        # pdb.set_trace()
+        last_perform = copy.deepcopy(Dict_cur_guidance)
+
+    elif progress_sample:
+        logger.info(f"Finding best samples")
+        # find samples with largest progress?
+        # first evaluate each samples' progress
+        # {img_id: [label, guid, prob]}
+        Dict_sample_prob = Dict_cur_guidance['progress_res']
+        # list_sample_prob: [img_id, guid, prob]
+        list_sample_prob = [[key, value[1], value[-1]] for key, value in Dict_sample_prob.items()]
+        list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[1], x[0]), reverse=False)
+        saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
+                                      copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
+
+        # merge with last perform
+        for idx, pair in enumerate(list_sample_prob):
+            last_prob = last_perform['progress_res'][idx]
+            pair.append(last_prob)
+
+        list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
+
+        # find top samples
+        top_n = 100000
+        str_progress = list_sample_prob[:top_n]
+        res_progress = list_sample_prob[:top_n]
+        last_perform['progress_res'] = copy.deepcopy(saved_diff['progress_res'][0])
+
     return res_progress, str_progress, last_perform, saved_diff
 
 
@@ -691,7 +718,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
                 elif args.progress_sample:
-                    # select next guid based on progress
+                    # select samples to train based on progress
                     if args.uniform_set and not next_change_guid:
                         # not training progress eval to find the best guid
                         # run training on uniformly distributed dataset first
@@ -706,12 +733,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
 
-                    elif args.reshift_distribution and not next_change_guid:
-                        # run training on guid=100 dataset first
-                        cur_guidance = 100
-                        reshift_distribution = True
-                        next_change_guid = True
-                        logger.info(f"Running on reshift set (guid={cur_guidance})")
                     else:
                         next_change_guid = False
 
@@ -724,20 +745,20 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cnt += 1
 
                         # find samples with largest progress
-                        # TODO:
-                        list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                        list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                        largest_guid = list_progress[0]
-
-                        cur_guidance = next_guid[0]
-                        cur_guidance_id = list_guidance.index(cur_guidance)
-                        cur_str_times = 0
+                        list_img_guid = [item[:2] for item in res_progress]
 
                 if not skip_loading:
-                    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                              cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
-                                              ori_proportion=ori_proportion, reshift_distribution=reshift_distribution,
-                                              include_neg=args.include_neg)
+                    if not args.progress_sample or uniform_set:
+                        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
+                                                  cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
+                                                  ori_proportion=ori_proportion,
+                                                  reshift_distribution=reshift_distribution,
+                                                  include_neg=args.include_neg)
+                    else:
+                        # select training samples
+                        ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,
+                                                  include_neg=args.include_neg)
+                        pass
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)

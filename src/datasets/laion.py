@@ -43,7 +43,7 @@ def logging_input(curinput='', logger=None):
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False, return_img_id=False,
-                 reshift_distribution=False, include_neg=False, logger=None):
+                 reshift_distribution=False, include_neg=False, list_imgs=None, logger=None):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
         df_pos = df[df['label'] != 0]
@@ -90,6 +90,13 @@ class CsvDataset(Dataset):
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
             df = pd.concat([df, df_ori])
             logging_input(f'Concatted data {num_df} + {num_ori} = {len(df)}.', logger)
+
+        ##########################
+        # select image with given list
+        # list_imgs: [img_id, guid]
+        if list_imgs is not None:
+            df = df[df.apply(lambda x: [x['img_id'], x['guidance']] in list_imgs, axis=1)]
+            logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -478,7 +485,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
                     return_guidance=False, return_img_id=False, reshift_distribution=False, include_neg=False,
-                    datalimit=-1, logger=None):
+                    datalimit=-1, logger=None, list_imgs=None):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -494,7 +501,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
 
     dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
-                         guidance=guidance, datalimit=datalimit, uniform_guid=uniform_guid,
+                         guidance=guidance, datalimit=datalimit, uniform_guid=uniform_guid, list_imgs=list_imgs,
                          reshift_distribution=reshift_distribution, return_guidance=return_guidance,
                          return_img_id=return_img_id, ori_proportion=ori_proportion, include_neg=include_neg, )
     num_samples = len(dataset)
@@ -529,7 +536,7 @@ def get_dataset_fn(data_path, dataset_type):
 
 
 def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
-             datalimit=-1, return_img_id=False, reshift_distribution=False, include_neg=False):
+             datalimit=-1, return_img_id=False, reshift_distribution=False, include_neg=False, list_imgs=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
@@ -537,7 +544,7 @@ def get_data(args, preprocess_fns, logger=None, epoch=0, guidance=None, ori_prop
                                                                        epoch=epoch, guidance=guidance,
                                                                        ori_proportion=ori_proportion,
                                                                        uniform_guid=uniform_guid, logger=logger,
-                                                                       datalimit=datalimit,
+                                                                       datalimit=datalimit, list_imgs=list_imgs,
                                                                        reshift_distribution=reshift_distribution,
                                                                        return_img_id=return_img_id,
                                                                        include_neg=include_neg, )
