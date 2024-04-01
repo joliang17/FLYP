@@ -200,7 +200,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             value_arr = np.array(value)
             last_arr = np.array(last_perform[key])
             cur_progress = value_arr - last_arr
-            saved_diff[guidance_i] = copy.deepcopy(cur_progress)  # saved for analysis
+            saved_diff[guidance_i] = copy.deepcopy(value_arr)  # saved for analysis
             
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
@@ -440,6 +440,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     last_perform = {}
     loss_pairs = []
     cnt = 0
+    save_cnt = 0
     next_change_guid = False
     pre_guidance = None
 
@@ -576,6 +577,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
                         cnt += 1
+                        save_cnt = 0
 
                         list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                         list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
@@ -686,6 +688,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 percent_complete = 100 * i / num_batches
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
+
+            if args.uniform_set and not next_change_guid:
+                if i % 10 == 0:
+                    # record beginning progress prob
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                print_log=False, )
+                    saved_diff = eval_res[-1]
+                    with open(f"{log_dir}/progress_saved{cnt}_{save_cnt}.pkl", 'wb') as f:
+                        pickle.dump(saved_diff, f)
+                    save_cnt += 1
 
         # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
         #     pickle.dump(list_loss_pairs, f)
