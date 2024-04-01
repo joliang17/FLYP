@@ -289,7 +289,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
             value_arr = np.array(value)
             last_arr = np.array(last_perform[key])
             cur_progress = value_arr - last_arr
-            saved_diff[guidance_i] = copy.deepcopy(value_arr)  # saved for analysis
+            saved_diff[guidance_i] = [copy.deepcopy(value_arr), copy.deepcopy(last_arr)]  # saved for analysis
             
             if weighted_hist_prog is not None:
                 # TODO: exponential moving average
@@ -781,15 +781,20 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and not next_change_guid:
-                if i % 10 == 0:
+            if args.uniform_set:
+                if i % 20 == 0:
                     # record beginning progress prob
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                 print_log=False, )
                     saved_diff = eval_res[-1]
-                    with open(f"{log_dir}/progress_saved{cnt}_{save_cnt}.pkl", 'wb') as f:
-                        pickle.dump(saved_diff, f)
+                    if next_change_guid:
+                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                    else:
+                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
                     save_cnt += 1
+
 
         # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
         #     pickle.dump(list_loss_pairs, f)
