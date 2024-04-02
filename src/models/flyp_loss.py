@@ -197,7 +197,11 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-    epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
+    if log_dir is not None:
+        epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
+    else:
+        epoch_stats = {f"AfterChange {key}": values for key, values in epoch_stats.items() if ' Class' not in key}
+
     if log_dir is not None:
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
@@ -210,7 +214,7 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     return stats
 
 
-def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=True, progress_sample=False,
+def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
                   progress_ma=None, print_log=True):
     """
     Find best guidance based on guid group
@@ -319,14 +323,22 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
         # {img_id: [label, guid, prob]}
         Dict_sample_prob = Dict_cur_guidance['progress_res']
         # list_sample_prob: [img_id, guid, prob]
-        list_sample_prob = [[key, value[1], value[-1]] for key, value in Dict_sample_prob.items()]
+        list_sample_prob = [[key, value[0][1], value[0][-1]] for key, value in Dict_sample_prob.items()]
         list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[1], x[0]), reverse=False)
+
+        if 'progress_res' not in last_perform:
+            last_perform['progress_res'] = None
+
+        assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
         saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
                                       copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
 
         # merge with last perform
         for idx, pair in enumerate(list_sample_prob):
-            last_prob = last_perform['progress_res'][idx]
+            if last_perform['progress_res'] is not None:
+                last_prob = last_perform['progress_res'][idx][-1]
+            else:
+                last_prob = 0
             pair.append(last_prob)
 
         list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
@@ -335,7 +347,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=T
         top_n = 100000
         str_progress = list_sample_prob[:top_n]
         res_progress = list_sample_prob[:top_n]
-        last_perform['progress_res'] = copy.deepcopy(saved_diff['progress_res'][0])
+        last_perform['progress_res'] = saved_diff['progress_res'][0]
 
     return res_progress, str_progress, last_perform, saved_diff
 
@@ -556,19 +568,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     loss_pairs = []
     cnt = 0
     save_cnt = 0
+    total_iter = 0
     next_change_guid = False
     pre_guidance = None
 
     if args.uniform_set:
-        if args.progress_guid:
-            # start with guid found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
+        start_uniform = total_iter
+        # if args.progress_guid:
+        #     # start with guid found on uniformly distributed dataset
+        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        #     last_perform = eval_res[2]
 
-        elif args.progress_sample:
-            # start with samples found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
-            last_perform = eval_res[2]
+        # elif args.progress_sample:
+        #     # start with samples found on uniformly distributed dataset
+        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+        #     last_perform = eval_res[2]
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
@@ -671,10 +685,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        # record beginning progress prob
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 print_log=False, )
-                        last_perform = eval_res[2]
+
+                        start_uniform = total_iter
+                        ## record beginning progress prob
+                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                        #                          print_log=False, )
+                        # last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -692,6 +708,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 0
                         else:
+                            # exit(0)
                             # find the largest guidance based on progress
                             eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                     progress_ma=progress_ma)
@@ -792,6 +809,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 scheduler(step)
 
             id_flyp_loss_sum += ft_clip_loss.item()
+            total_iter += 1
 
             # Training logging
             if not args.debug:
@@ -809,19 +827,30 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # if args.uniform_set:
-            #     if i % 20 == 0:
-            #         # record beginning progress prob
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-            #                                  print_log=False, )
-            #         saved_diff = eval_res[-1]
-            #         if next_change_guid:
-            #             with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #                 pickle.dump(saved_diff, f)
-            #         else:
-            #             with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #                 pickle.dump(saved_diff, f)
-            #         save_cnt += 1
+            if args.uniform_set and (total_iter - start_uniform <= 20):
+
+                if args.progress_guid:
+                    # start with guid found on uniformly distributed dataset
+                    eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+                    # last_perform = eval_res[2]
+
+                    # record beginning progress prob
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                             print_log=False, )
+                    saved_diff = eval_res[-1]
+                    if next_change_guid:
+                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                    else:
+                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                    save_cnt += 1
+
+                elif args.progress_sample:
+                    # start with samples found on uniformly distributed dataset
+                    eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+                    # last_perform = eval_res[2]
+
 
         # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
         #     pickle.dump(list_loss_pairs, f)
