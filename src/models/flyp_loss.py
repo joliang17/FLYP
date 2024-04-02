@@ -685,35 +685,42 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     else:
                         next_change_guid = False
 
-                        # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff = eval_res
-                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                        cnt += 1
-                        save_cnt = 0
-
-                        list_progress = [(guid, prog) for guid, prog in res_progress.items()]
-                        list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
-                        largest_guid = list_progress[0]
-
-                        if args.explore:
-                            tau_thres, next_guid = explore_guid(args, epoch, logger, largest_guid, list_progress)
+                        if args.random_guid:
+                            # not running progress eval
+                            cur_guidance = random.choice(list_guidance)
+                            logger.info(f"randomly select guid {cur_guidance}")
+                            cur_guidance_id = list_guidance.index(cur_guidance)
+                            cur_str_times = 0
                         else:
-                            next_guid = largest_guid
-                            tau_thres = 0
-                            logger.info(f"Select largest guid = {next_guid[0]}")
+                            # find the largest guidance based on progress
+                            eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                    progress_ma=progress_ma)
+                            res_progress, _, last_perform, saved_diff = eval_res
+                            with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                                pickle.dump(saved_diff, f)
+                            cnt += 1
+                            save_cnt = 0
 
-                        if not args.debug:
-                            wandb.log({"Epoch": epoch, "tau": tau_thres, })
+                            list_progress = [(guid, prog) for guid, prog in res_progress.items()]
+                            list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
+                            largest_guid = list_progress[0]
 
-                        cur_guidance = next_guid[0]
-                        cur_guidance_id = list_guidance.index(cur_guidance)
-                        cur_str_times = 0
+                            if args.explore:
+                                tau_thres, next_guid = explore_guid(args, epoch, logger, largest_guid, list_progress)
+                            else:
+                                next_guid = largest_guid
+                                tau_thres = 0
+                                logger.info(f"Select largest guid = {next_guid[0]}")
 
-                        # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, )
+                            if not args.debug:
+                                wandb.log({"Epoch": epoch, "tau": tau_thres, })
+
+                            cur_guidance = next_guid[0]
+                            cur_guidance_id = list_guidance.index(cur_guidance)
+                            cur_str_times = 0
+
+                            # eval performance on ood dataset
+                            _ = general_eval(model, args, stats, epoch, logger=logger, )
 
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
@@ -802,19 +809,19 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set:
-                if i % 20 == 0:
-                    # record beginning progress prob
-                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                             print_log=False, )
-                    saved_diff = eval_res[-1]
-                    if next_change_guid:
-                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    else:
-                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    save_cnt += 1
+            # if args.uniform_set:
+            #     if i % 20 == 0:
+            #         # record beginning progress prob
+            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+            #                                  print_log=False, )
+            #         saved_diff = eval_res[-1]
+            #         if next_change_guid:
+            #             with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+            #                 pickle.dump(saved_diff, f)
+            #         else:
+            #             with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+            #                 pickle.dump(saved_diff, f)
+            #         save_cnt += 1
 
         # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
         #     pickle.dump(list_loss_pairs, f)
