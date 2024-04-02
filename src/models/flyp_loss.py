@@ -574,15 +574,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.uniform_set:
         start_uniform = total_iter
-        # if args.progress_guid:
-        #     # start with guid found on uniformly distributed dataset
-        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        #     last_perform = eval_res[2]
+        if args.progress_guid:
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+            last_perform = eval_res[2]
 
-        # elif args.progress_sample:
-        #     # start with samples found on uniformly distributed dataset
-        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
-        #     last_perform = eval_res[2]
+        elif args.progress_sample:
+            # start with samples found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+            last_perform = eval_res[2]
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
         next_change_guid = True
         ft_iterator = iter(ft_dataloader)
@@ -687,10 +687,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
 
                         start_uniform = total_iter
-                        ## record beginning progress prob
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          print_log=False, )
-                        # last_perform = eval_res[2]
+                        # record beginning progress prob
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -831,12 +831,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
-                    eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-                    # last_perform = eval_res[2]
-
-                    # record beginning progress prob
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
+                    # last_perform = eval_res[2]
                     saved_diff = eval_res[-1]
                     if next_change_guid:
                         with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
@@ -851,11 +848,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
                     # last_perform = eval_res[2]
 
-
-        # with open(f"img_loss_curri_epoch1.pkl", 'wb') as f:
-        #     pickle.dump(list_loss_pairs, f)
-
-        # pdb.set_trace()
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
         #############################################
