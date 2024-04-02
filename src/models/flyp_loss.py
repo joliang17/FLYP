@@ -845,7 +845,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                 elif args.progress_sample:
                     # start with samples found on uniformly distributed dataset
-                    eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
                     # last_perform = eval_res[2]
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
