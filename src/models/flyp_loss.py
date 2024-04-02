@@ -295,7 +295,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 value_arr = np.array(value)
                 last_arr = np.array(last_perform[key])
                 cur_progress = value_arr - last_arr
-                saved_diff['progress_res'] = [value_arr.copy(), last_arr.copy()]  # saved for analysis
+                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy()]  # saved for analysis
 
                 if weighted_hist_prog is not None:
                     # TODO: exponential moving average
@@ -695,7 +695,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         logger.info(f"Running on uniform set")
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
-                        
+
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
