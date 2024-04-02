@@ -121,7 +121,7 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_class=False, log_dir=None):
+def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_class=False, log_dir=None, wandb_comment=''):
     """
 
     :param model:
@@ -132,6 +132,7 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     :param print_log:
     :param print_class:
     :param log_dir:
+    :param wandb_comment:
     :return:
     """
 
@@ -197,10 +198,10 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-    if log_dir is not None:
+    if wandb_comment != '':
         epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
     else:
-        epoch_stats = {f"AfterChange {key}": values for key, values in epoch_stats.items() if ' Class' not in key}
+        epoch_stats = {f"{wandb_comment}{key}": values for key, values in epoch_stats.items() if ' Class' not in key}
 
     if log_dir is not None:
         stats.append(epoch_stats)
@@ -692,6 +693,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
+                        # eval performance on ood dataset
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
+                        
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
                         cur_guidance = 100
@@ -737,7 +741,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_str_times = 0
 
                             # eval performance on ood dataset
-                            _ = general_eval(model, args, stats, epoch, logger=logger, )
+                            _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
 
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
