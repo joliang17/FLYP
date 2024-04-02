@@ -760,6 +760,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
 
                     else:
                         next_change_guid = False
@@ -774,6 +775,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                         # find samples with largest progress
                         list_img_guid = [item[:2] for item in res_progress]
+                        # eval performance on ood dataset
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
@@ -847,10 +850,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             pickle.dump(saved_diff, f)
                     save_cnt += 1
 
-                elif args.progress_sample:
-                    # start with samples found on uniformly distributed dataset
-                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
-                    # last_perform = eval_res[2]
+                # elif args.progress_sample:
+                #     # start with samples found on uniformly distributed dataset
+                #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
+                #     # last_perform = eval_res[2]
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
