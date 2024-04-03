@@ -351,48 +351,6 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     return res_progress, str_progress, last_perform, saved_diff
 
 
-def progress_eval_train(model, args, epoch, logger, progress_ma=None):
-    """
-    Evaluate the best guidance on training dataset for each image
-
-    :param model:
-    :param args:
-    :param epoch:
-    :param logger:
-    :param progress_ma:
-    :return:
-    """
-    classification_head_new = generate_class_head(model, args, epoch)
-
-    dict_guid_prob = {}
-    _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger=logger, progress_sample=True)
-
-    # dict_best_guid = dict()
-    # for img_id, list_guid_prob in dict_guid_prob['guid_info'].items():
-    #     # compute moving average of progress
-    #     if args.ma_progress and progress_ma is not None:
-    #         # adding current eval to ma list
-    #         progress_ma[img_id].extend(list_guid_prob)
-    #         # compute for average here
-    #         new_list_guid = progress_ma[img_id]
-    #         all_guid = set([item[0] for item in new_list_guid])
-    #         list_guid_prob_new = []
-    #         for guid_int in all_guid:
-    #             guid_probs = [item[1] for item in new_list_guid if item[0] == guid_int]
-    #             value = np.mean(np.array(guid_probs))
-    #             list_guid_prob_new.append([guid_int, value])
-
-    #         list_guid_prob = list_guid_prob_new
-
-    #     # find best guid for each image
-    #     list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
-    #     pdb.set_trace()
-    #     best_guid = list_guid_prob[0][0]
-    #     dict_best_guid[img_id] = best_guid
-
-    return dict_guid_prob['guid_info']
-
-
 def init_guidance_setting(args, logger, ):
     cur_guidance = None
     cur_guidance_id = 0
@@ -564,19 +522,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     stats = []
     last_perform = {}
-    loss_pairs = []
     cnt = 0
-    save_cnt = 0
-    total_iter = 0
     next_change_guid = False
     pre_guidance = None
 
     if args.uniform_set:
-        start_uniform = total_iter
-        # if args.progress_guid:
-        #     # start with guid found on uniformly distributed dataset
-        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        #     last_perform = eval_res[2]
+        if args.progress_guid:
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+            last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -686,12 +640,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        start_uniform = total_iter
 
-                        # # record beginning progress prob
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          print_log=False, )
-                        # last_perform = eval_res[2]
+                        # record beginning progress prob
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
@@ -832,29 +785,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 40 == 0)):
-            if args.uniform_set and total_iter - start_uniform == 1:
-                if args.progress_guid:
-                    # start with guid found on uniformly distributed dataset
-                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                             print_log=False, )
-                    last_perform = eval_res[2]
-                    # saved_diff = eval_res[-1]
-                    # if next_change_guid:
-                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-                    #         pickle.dump(saved_diff, f)
-                    # else:
-                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-                    #         pickle.dump(saved_diff, f)
-                    # save_cnt += 1
-
-            #     # elif args.progress_sample:
-            #     #     # start with samples found on uniformly distributed dataset
-            #     #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
-            #     #     # last_perform = eval_res[2]
-
-            total_iter += 1
-
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
         #############################################
@@ -900,17 +830,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #     # continue
         #     exit(0)
-
-        #############################################
-
-        # #############################################
-        # # Evaluate progress on different group of cur_guidance for this epoch
-        # if args.progress_guid:
-        #     logger.info(f"Progress evaluation ...")
-        #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-        #                                              progress_sample=False, progress_ma=progress_ma)
-        #     str_progress = eval_res[1]
-        #     str_progress['Epoch'] = epoch
 
         #############################################
         # Evaluate
