@@ -576,10 +576,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.uniform_set:
         start_uniform = total_iter
-        if args.progress_guid:
-            # start with guid found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
+        # if args.progress_guid:
+        #     # start with guid found on uniformly distributed dataset
+        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        #     last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -691,10 +691,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         start_uniform = total_iter
 
-                        # record beginning progress prob
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 print_log=False, )
-                        last_perform = eval_res[2]
+                        # # record beginning progress prob
+                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                        #                          print_log=False, )
+                        # last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
@@ -836,21 +836,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter - start_uniform % 40 == 0)):
+            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 40 == 0)):
+            if args.uniform_set and total_iter - start_uniform == 1:
 
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
-                    # last_perform = eval_res[2]
-                    saved_diff = eval_res[-1]
-                    if next_change_guid:
-                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    else:
-                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    save_cnt += 1
+                    last_perform = eval_res[2]
+                    # saved_diff = eval_res[-1]
+                    # if next_change_guid:
+                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # else:
+                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # save_cnt += 1
 
                 # elif args.progress_sample:
                 #     # start with samples found on uniformly distributed dataset
