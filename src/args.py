@@ -60,6 +60,8 @@ def parse_arguments():
 
     ######################################
     # added args
+    parser.add_argument("--ft_data_uniform", type=str, default=None, help="Path to csv filewith training data", )
+
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--baseline', action=argparse.BooleanOptionalAction)

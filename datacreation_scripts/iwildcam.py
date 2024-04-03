@@ -163,6 +163,8 @@ def main(args):
         # select 1 generated images per guidance for each samples
         print(f"selecting images with equal number of guidance for guidance selection")
         df = df.groupby(['img_name', 'guidance']).sample(n=1, replace=False, random_state=42).reset_index(drop=True)
+
+        # randomly select fixed number of
         df_sel = df.copy()
 
     # merge prompts

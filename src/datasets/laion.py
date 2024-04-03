@@ -487,7 +487,18 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
                     return_guidance=False, return_img_id=False, reshift_distribution=False, include_neg=False,
                     datalimit=-1, logger=None, list_imgs=None):
     # normal training / curriculum eval on test dataset
-    input_filename = args.ft_data if is_train else args.ft_data_test
+    if is_train:
+        input_filename = args.ft_data
+    else:
+        if not args.progress_sample:
+            input_filename = args.ft_data_test
+        else:
+            # only for sample level selection
+            # Uniformly distributied D should be unseen to args.ft_data_test
+            input_filename = args.ft_data_uniform
+            # no need to select uniformly data from original dataset
+            uniform_guid = False
+
     assert input_filename
 
     if args.get_labeled_csv:
