@@ -198,7 +198,8 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-    epoch_stats = {f"{wandb_comment}{key}": values for key, values in epoch_stats.items() if ' Class' not in key}
+    epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
+    epoch_stats = {f"{wandb_comment}{key}" if 'IWildCam' in key else key: values for key, values in epoch_stats.items()}
 
     if log_dir is not None:
         stats.append(epoch_stats)
