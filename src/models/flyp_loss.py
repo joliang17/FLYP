@@ -848,10 +848,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     #         pickle.dump(saved_diff, f)
                     # save_cnt += 1
 
-                # elif args.progress_sample:
-                #     # start with samples found on uniformly distributed dataset
-                #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
-                #     # last_perform = eval_res[2]
+            #     # elif args.progress_sample:
+            #     #     # start with samples found on uniformly distributed dataset
+            #     #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
+            #     #     # last_perform = eval_res[2]
 
             total_iter += 1
 
