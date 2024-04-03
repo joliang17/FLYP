@@ -694,7 +694,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -741,7 +741,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_str_times = 0
 
                             # eval performance on ood dataset
-                            _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
+                            _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
@@ -760,7 +760,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
@@ -776,7 +776,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find samples with largest progress
                         list_img_guid = [item[:2] for item in res_progress]
                         # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
