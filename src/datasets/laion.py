@@ -84,7 +84,7 @@ class CsvDataset(Dataset):
 
         ##########################
         # mixture from original data * image guidance
-        if ori_proportion is not None:
+        if ori_proportion is not None and guid != 100:
             num_df = len(df)
             num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
             df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
