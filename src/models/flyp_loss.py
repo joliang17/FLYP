@@ -816,7 +816,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 scheduler(step)
 
             id_flyp_loss_sum += ft_clip_loss.item()
-            total_iter += 1
 
             # Training logging
             if not args.debug:
@@ -834,18 +833,29 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # if args.uniform_set and (total_iter - start_uniform == 1):
+            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 40 == 0)):
+            if args.uniform_set and total_iter - start_uniform == 1:
 
-            #     if args.progress_guid:
-            #         # start with guid found on uniformly distributed dataset
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-            #                                  print_log=False, )
-            #         last_perform = eval_res[2]
+                if args.progress_guid:
+                    # start with guid found on uniformly distributed dataset
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                             print_log=False, )
+                    last_perform = eval_res[2]
+                    # saved_diff = eval_res[-1]
+                    # if next_change_guid:
+                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # else:
+                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # save_cnt += 1
 
                 # elif args.progress_sample:
                 #     # start with samples found on uniformly distributed dataset
                 #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
                 #     # last_perform = eval_res[2]
+
+            total_iter += 1
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
@@ -863,35 +873,35 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        if args.debug:
-            # for epoch in range(4, 20):
-            # for epoch in range(0, 1):
-            model = clip_encoder
-            epoch = 19
-            model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
+        # if args.debug:
+        #     # for epoch in range(4, 20):
+        #     # for epoch in range(0, 1):
+        #     model = clip_encoder
+        #     epoch = 19
+        #     model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
 
-            # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
-            #                         f'checkpoint_{epoch}.pt')
-            logger.info('Loading model ' + str(model_path))
+        #     # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
+        #     #                         f'checkpoint_{epoch}.pt')
+        #     logger.info('Loading model ' + str(model_path))
 
-            checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            model = model.cuda()
-            model = torch.nn.DataParallel(model, device_ids=devices)
+        #     checkpoint = torch.load(model_path)
+        #     model.load_state_dict(checkpoint['model_state_dict'])
+        #     model = model.cuda()
+        #     model = torch.nn.DataParallel(model, device_ids=devices)
 
-            logger.info(f"Progress evaluation on training data ...")
-            classification_head_new = generate_class_head(model, args, epoch)
-            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-            dict_best_guid = epoch_stats['dict_img_guid']
-            # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-            #                                      progress_ma=progress_ma)
+        #     logger.info(f"Progress evaluation on training data ...")
+        #     classification_head_new = generate_class_head(model, args, epoch)
+        #     eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+        #     dict_best_guid = epoch_stats['dict_img_guid']
+        #     # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+        #     #                                      progress_ma=progress_ma)
 
-            # save guidance_score:
-            with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+        #     # save guidance_score:
+        #     with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
+        #         pickle.dump(dict_best_guid, f)
 
-            # continue
-            exit(0)
+        #     # continue
+        #     exit(0)
 
         #############################################
 
