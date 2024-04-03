@@ -330,7 +330,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         if 'progress_res' not in last_perform:
             last_perform['progress_res'] = None
 
-        assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
+        else:
+            assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
         saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
                                       copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
 
