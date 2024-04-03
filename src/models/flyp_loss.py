@@ -198,7 +198,7 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-    if wandb_comment != '':
+    if wandb_comment == '':
         epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
     else:
         epoch_stats = {f"{wandb_comment}{key}": values for key, values in epoch_stats.items() if ' Class' not in key}
@@ -576,10 +576,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.uniform_set:
         start_uniform = total_iter
-        # if args.progress_guid:
-        #     # start with guid found on uniformly distributed dataset
-        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        #     last_perform = eval_res[2]
+        if args.progress_guid:
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+            last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -691,10 +691,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         start_uniform = total_iter
 
-                        # # record beginning progress prob
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          print_log=False, )
-                        # last_perform = eval_res[2]
+                        # record beginning progress prob
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
@@ -836,13 +836,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and (total_iter - start_uniform == 1):
+            if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter - start_uniform % 40 == 0)):
 
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
-                    last_perform = eval_res[2]
+                    # last_perform = eval_res[2]
+                    saved_diff = eval_res[-1]
+                    if next_change_guid:
+                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                    else:
+                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                            pickle.dump(saved_diff, f)
+                    save_cnt += 1
 
                 # elif args.progress_sample:
                 #     # start with samples found on uniformly distributed dataset
@@ -867,35 +875,35 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        if args.debug:
-            # for epoch in range(4, 20):
-            # for epoch in range(0, 1):
-            model = clip_encoder
-            epoch = 19
-            model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
+        # if args.debug:
+        #     # for epoch in range(4, 20):
+        #     # for epoch in range(0, 1):
+        #     model = clip_encoder
+        #     epoch = 19
+        #     model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
 
-            # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
-            #                         f'checkpoint_{epoch}.pt')
-            logger.info('Loading model ' + str(model_path))
+        #     # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
+        #     #                         f'checkpoint_{epoch}.pt')
+        #     logger.info('Loading model ' + str(model_path))
 
-            checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            model = model.cuda()
-            model = torch.nn.DataParallel(model, device_ids=devices)
+        #     checkpoint = torch.load(model_path)
+        #     model.load_state_dict(checkpoint['model_state_dict'])
+        #     model = model.cuda()
+        #     model = torch.nn.DataParallel(model, device_ids=devices)
 
-            logger.info(f"Progress evaluation on training data ...")
-            classification_head_new = generate_class_head(model, args, epoch)
-            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-            dict_best_guid = epoch_stats['dict_img_guid']
-            # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-            #                                      progress_ma=progress_ma)
+        #     logger.info(f"Progress evaluation on training data ...")
+        #     classification_head_new = generate_class_head(model, args, epoch)
+        #     eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+        #     dict_best_guid = epoch_stats['dict_img_guid']
+        #     # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
+        #     #                                      progress_ma=progress_ma)
 
-            # save guidance_score:
-            with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+        #     # save guidance_score:
+        #     with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
+        #         pickle.dump(dict_best_guid, f)
 
-            # continue
-            exit(0)
+        #     # continue
+        #     exit(0)
 
         #############################################
 
