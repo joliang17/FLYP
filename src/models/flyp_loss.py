@@ -198,10 +198,7 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
-    if wandb_comment != '':
-        epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-    else:
-        epoch_stats = {f"{wandb_comment}{key}": values for key, values in epoch_stats.items() if ' Class' not in key}
+    epoch_stats = {f"{wandb_comment}{key}": values for key, values in epoch_stats.items() if ' Class' not in key}
 
     if log_dir is not None:
         stats.append(epoch_stats)
@@ -575,11 +572,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     pre_guidance = None
 
     if args.uniform_set:
-        start_uniform = total_iter
-        # if args.progress_guid:
-        #     # start with guid found on uniformly distributed dataset
-        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-        #     last_perform = eval_res[2]
+        # start_uniform = total_iter
+        if args.progress_guid:
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+            last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -689,12 +686,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        start_uniform = total_iter
+                        # start_uniform = total_iter
 
-                        # # record beginning progress prob
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          print_log=False, )
-                        # last_perform = eval_res[2]
+                        # record beginning progress prob
+                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                                 print_log=False, )
+                        last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
@@ -837,13 +834,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and (total_iter - start_uniform == 1):
+            # if args.uniform_set and (total_iter - start_uniform == 1):
 
-                if args.progress_guid:
-                    # start with guid found on uniformly distributed dataset
-                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                             print_log=False, )
-                    last_perform = eval_res[2]
+            #     if args.progress_guid:
+            #         # start with guid found on uniformly distributed dataset
+            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+            #                                  print_log=False, )
+            #         last_perform = eval_res[2]
 
                 # elif args.progress_sample:
                 #     # start with samples found on uniformly distributed dataset
