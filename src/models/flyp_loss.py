@@ -819,7 +819,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 scheduler(step)
 
             id_flyp_loss_sum += ft_clip_loss.item()
-            total_iter += 1
 
             # Training logging
             if not args.debug:
@@ -849,6 +848,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 #     # start with samples found on uniformly distributed dataset
                 #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
                 #     # last_perform = eval_res[2]
+
+            total_iter += 1
 
         id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
