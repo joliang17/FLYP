@@ -572,11 +572,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     pre_guidance = None
 
     if args.uniform_set:
-        # start_uniform = total_iter
-        if args.progress_guid:
-            # start with guid found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
+        start_uniform = total_iter
+        # if args.progress_guid:
+        #     # start with guid found on uniformly distributed dataset
+        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        #     last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -686,15 +686,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        # start_uniform = total_iter
+                        start_uniform = total_iter
 
-                        # record beginning progress prob
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 print_log=False, )
-                        last_perform = eval_res[2]
+                        # # record beginning progress prob
+                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                        #                          print_log=False, )
+                        # last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     elif args.reshift_distribution and not next_change_guid:
                         # run training on guid=100 dataset first
@@ -712,7 +712,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 0
                         else:
-                            # exit(0)
                             # find the largest guidance based on progress
                             eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                     progress_ma=progress_ma)
@@ -741,7 +740,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_str_times = 0
 
                             # eval performance on ood dataset
-                            _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
+                            _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     if args.proportion:
                         ori_proportion = 1 / args.curriculum_epoch * epoch
@@ -760,7 +759,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='After Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
@@ -776,7 +775,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find samples with largest progress
                         list_img_guid = [item[:2] for item in res_progress]
                         # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Before Change ')
+                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
@@ -835,7 +834,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 40 == 0)):
             if args.uniform_set and total_iter - start_uniform == 1:
-
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
