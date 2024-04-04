@@ -158,6 +158,9 @@ def main(args):
         df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
         df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
             lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+
+        # exclude curriculum set in training set
+        df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
     else:
         # select equal number of guidance for each seed images
         # select 1 generated images per guidance for each samples
