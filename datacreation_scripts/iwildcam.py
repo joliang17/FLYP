@@ -140,6 +140,8 @@ def main(args):
 
     print('adding img id')
     # change img_name to int img_id
+    # if img_id >= 0: enhanced data
+    # if img_id < 0: data that are not enhanced
     df_count = df.groupby(['img_name']).count()['guidance']
     list_guid_img_name = list(df_count[df_count > 1].index)  # largest 7715
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
