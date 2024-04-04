@@ -833,7 +833,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 40 == 0)):
+            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 400 == 0)):
             if args.uniform_set and total_iter - start_uniform == 1:
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
