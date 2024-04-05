@@ -79,7 +79,7 @@ class CsvDataset(Dataset):
                 df = pd.concat([df, df_neg_temp])
                 logging_input(f'sampling neg with {len(df_neg_temp)} samples.', logger)
 
-            if merge_ori:
+            if merge_ori and guidance != 100:
                 df = pd.concat([df, df_unenhanced])
                 logging_input(f'merged with unenhanced data.', logger)
 
