@@ -140,6 +140,8 @@ def main(args):
 
     print('adding img id')
     # change img_name to int img_id
+    # if img_id >= 0: enhanced data
+    # if img_id < 0: data that are not enhanced
     df_count = df.groupby(['img_name']).count()['guidance']
     list_guid_img_name = list(df_count[df_count > 1].index)  # largest 7715
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
@@ -159,7 +161,7 @@ def main(args):
         df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
             lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
-        # exclude curriculum set in training set
+        # exclude validate set from training samples
         df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
     else:
         # select equal number of guidance for each seed images

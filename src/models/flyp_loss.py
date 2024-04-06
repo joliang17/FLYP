@@ -92,7 +92,7 @@ def explore_guid(args, epoch, logger, largest_guid, list_progress):
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, epoch=0, ori_proportion=None,
-              uniform_guid=False, reshift_distribution=False, include_neg=False, list_imgs=None):
+              uniform_guid=False, include_neg=False, list_imgs=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -102,9 +102,10 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
 
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
+                             merge_ori=args.merge_ori,
                              return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
-                             reshift_distribution=reshift_distribution, logger=logger)
+                             logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
     ft_dataloader = img_text_data['train_ft'].dataloader
@@ -358,48 +359,6 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     return res_progress, str_progress, last_perform, saved_diff
 
 
-def progress_eval_train(model, args, epoch, logger, progress_ma=None):
-    """
-    Evaluate the best guidance on training dataset for each image
-
-    :param model:
-    :param args:
-    :param epoch:
-    :param logger:
-    :param progress_ma:
-    :return:
-    """
-    classification_head_new = generate_class_head(model, args, epoch)
-
-    dict_guid_prob = {}
-    _ = evaluate(model, args, classification_head_new, dict_guid_prob, logger=logger, progress_sample=True)
-
-    # dict_best_guid = dict()
-    # for img_id, list_guid_prob in dict_guid_prob['guid_info'].items():
-    #     # compute moving average of progress
-    #     if args.ma_progress and progress_ma is not None:
-    #         # adding current eval to ma list
-    #         progress_ma[img_id].extend(list_guid_prob)
-    #         # compute for average here
-    #         new_list_guid = progress_ma[img_id]
-    #         all_guid = set([item[0] for item in new_list_guid])
-    #         list_guid_prob_new = []
-    #         for guid_int in all_guid:
-    #             guid_probs = [item[1] for item in new_list_guid if item[0] == guid_int]
-    #             value = np.mean(np.array(guid_probs))
-    #             list_guid_prob_new.append([guid_int, value])
-
-    #         list_guid_prob = list_guid_prob_new
-
-    #     # find best guid for each image
-    #     list_guid_prob = sorted(list_guid_prob, key=lambda x: x[-1], reverse=True)
-    #     pdb.set_trace()
-    #     best_guid = list_guid_prob[0][0]
-    #     dict_best_guid[img_id] = best_guid
-
-    return dict_guid_prob['guid_info']
-
-
 def init_guidance_setting(args, logger, ):
     cur_guidance = None
     cur_guidance_id = 0
@@ -571,9 +530,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     stats = []
     last_perform = {}
-    loss_pairs = []
     cnt = 0
-    save_cnt = 0
     total_iter = 0
     next_change_guid = False
     pre_guidance = None
@@ -638,21 +595,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             except StopIteration:
                 ori_proportion = None
                 uniform_set = False  # run on uniform set right not
-                reshift_distribution = False
                 skip_loading = False
                 if not args.curriculum or (args.curriculum_epoch is not None and epoch > args.curriculum_epoch):
                     # train on baseline without curriculum strategy / curriculum period ends
                     skip_loading = True
                 elif (not args.progress_guid) and (not args.progress_sample):
                     # do not select next guid based on progress
-                    if args.reshift_distribution and not next_change_guid:
-                        # run training on guid=100 dataset first
-                        pre_guidance = cur_guidance
-                        cur_guidance = 100
-                        reshift_distribution = True
-                        next_change_guid = True
-                        logger.info(f"Running on reshift set (guid={cur_guidance}), set pre_guidance={pre_guidance}")
-                    elif args.uniform_set and not next_change_guid:
+                    if args.uniform_set and not next_change_guid:
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
@@ -703,12 +652,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
-                    elif args.reshift_distribution and not next_change_guid:
-                        # run training on guid=100 dataset first
-                        cur_guidance = 100
-                        reshift_distribution = True
-                        next_change_guid = True
-                        logger.info(f"Running on reshift set (guid={cur_guidance})")
                     else:
                         next_change_guid = False
 
@@ -789,7 +732,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                                   cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
                                                   ori_proportion=ori_proportion,
-                                                  reshift_distribution=reshift_distribution,
                                                   include_neg=args.include_neg)
                     else:
                         # select training samples
@@ -908,17 +850,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #     # continue
         #     exit(0)
-
-        #############################################
-
-        # #############################################
-        # # Evaluate progress on different group of cur_guidance for this epoch
-        # if args.progress_guid:
-        #     logger.info(f"Progress evaluation ...")
-        #     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-        #                                              progress_sample=False, progress_ma=progress_ma)
-        #     str_progress = eval_res[1]
-        #     str_progress['Epoch'] = epoch
 
         #############################################
         # Evaluate

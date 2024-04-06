@@ -92,6 +92,9 @@ def parse_arguments():
     # mix the generated data with original data
     parser.add_argument('--proportion', action=argparse.BooleanOptionalAction)
 
+    # merge with original data if select guid != 100
+    parser.add_argument('--merge_ori', action=argparse.BooleanOptionalAction)
+
     # run on dynamic tau
     parser.add_argument('--tau_curriculum', action=argparse.BooleanOptionalAction)
 
@@ -99,9 +102,6 @@ def parse_arguments():
 
     # run uniform set before finding best guidance
     parser.add_argument('--uniform_set', action=argparse.BooleanOptionalAction)
-
-    # run on guid=100 before finding best guidance
-    parser.add_argument('--reshift_distribution', action=argparse.BooleanOptionalAction)
 
     # including neg samples while running on generated data
     parser.add_argument('--include_neg', action=argparse.BooleanOptionalAction)
