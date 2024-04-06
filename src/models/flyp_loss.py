@@ -254,11 +254,17 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 continue
             if keywords not in key:
                 continue
+
             if key not in last_perform:
                 if isinstance(value, float):
                     last_perform[key] = 0
                 else:
-                    last_perform[key] = [0] * len(value)
+                    last_perform[key] = np.zeros_like(np.array(value))
+
+            list_img_id = None
+            if args.progress_metric == 'Prob':
+                list_img_id = copy.deepcopy(value[1])
+                value = value[0]
 
             # guidance value
             list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
@@ -291,9 +297,9 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             else:
                 # progress as relative increase of prob in each image
                 value_arr = np.array(value)
-                last_arr = np.array(last_perform[key])
+                last_arr = np.array(last_perform[key])[0, :]
                 cur_progress = value_arr - last_arr
-                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy()]  # saved for analysis
+                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id]  # saved for analysis
 
                 if weighted_hist_prog is not None:
                     # TODO: exponential moving average
@@ -833,7 +839,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 400 == 0)):
+            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 200 == 0)):
+            # if args.uniform_set and (total_iter % 200 == 0):
             if args.uniform_set and total_iter - start_uniform == 1:
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset

@@ -357,9 +357,9 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
                                       progress_guid=True, )
         if 'progress_res' in results:
             dict_guid_prob = results['progress_res']
-            dict_guid_prob_new = {key: [item[0] for item in values] for key, values in dict_guid_prob.items()}
-            dict_guid_mean = {key: np.mean(values) for key, values in dict_guid_prob_new.items()}
-            dict_guid_std = {key: np.std(values) for key, values in dict_guid_prob_new.items()}
+            dict_guid_prob_new = {key: [[item[0] for item in values], [item[1] for item in values]] for key, values in dict_guid_prob.items()}
+            dict_guid_mean = {key: np.mean(values[0]) for key, values in dict_guid_prob_new.items()}
+            dict_guid_std = {key: np.std(values[0]) for key, values in dict_guid_prob_new.items()}
 
             for key in dict_guid_mean.keys():
                 guid_mean = dict_guid_mean[key]
