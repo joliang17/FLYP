@@ -693,7 +693,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     if args.proportion:
-                        ori_proportion = 1 / args.curriculum_epoch * epoch
+                        ori_proportion = 1 - 1 / args.curriculum_epoch * epoch
+                        
                 elif args.progress_sample:
                     # select samples to train based on progress
                     if args.uniform_set and not next_change_guid:
