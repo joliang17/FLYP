@@ -102,7 +102,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
 
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-                             merge_ori=args.merge_ori,
+                             merge_ori=args.merge_ori, subsample=args.subsample,
                              return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
                              logger=logger)

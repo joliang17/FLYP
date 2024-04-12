@@ -95,6 +95,9 @@ def parse_arguments():
     # merge with original data if select guid != 100
     parser.add_argument('--merge_ori', action=argparse.BooleanOptionalAction)
 
+    # sampling partial cases from original data
+    parser.add_argument('--subsample', action=argparse.BooleanOptionalAction)
+
     # run on dynamic tau
     parser.add_argument('--tau_curriculum', action=argparse.BooleanOptionalAction)
 
