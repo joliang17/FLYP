@@ -388,7 +388,11 @@ def init_guidance_setting(args, logger, ):
 
             # estimate the number of times loading for each guid
             len_all_guid = len(df_ori[df_ori['guidance'] != 100])
-            loop_times = math.ceil(total_iteration / len_all_guid)
+            if args.merge_ori:
+                num_guid = len(list_guidance)
+                loop_times = int(args.curriculum_epoch / num_guid)
+            else:
+                loop_times = math.ceil(total_iteration / len_all_guid)
 
             # start from guidance = 100
             # cur_guidance_id = len(list_guidance) - 1
@@ -537,10 +541,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if args.uniform_set:
         start_uniform = total_iter
-        if args.progress_guid:
-            # start with guid found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
+        # if args.progress_guid:
+        #     # start with guid found on uniformly distributed dataset
+        #     eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        #     last_perform = eval_res[2]
 
         if args.progress_sample:
             # start with samples found on uniformly distributed dataset
@@ -629,8 +633,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
 
-                    cur_guidance = 100
-                    cur_guidance_id = list_guidance.index(cur_guidance)
+                    # cur_guidance = 100
+                    # cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
                     # select next guid based on progress
                     if args.uniform_set and not next_change_guid:
@@ -644,10 +648,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         start_uniform = total_iter
 
-                        # record beginning progress prob
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 print_log=False, )
-                        last_perform = eval_res[2]
+                        # # record beginning progress prob
+                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                        #                          print_log=False, )
+                        # last_perform = eval_res[2]
                         
                         # eval performance on ood dataset
                         _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
@@ -782,22 +786,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 200 == 0)):
+            # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 200 == 0)):
             # if args.uniform_set and (total_iter % 200 == 0):
-            # if args.uniform_set and total_iter - start_uniform == 1:
+            if args.uniform_set and total_iter - start_uniform == 1:
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
-                    # last_perform = eval_res[2]
-                    saved_diff = eval_res[-1]
-                    if next_change_guid:
-                        with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    else:
-                        with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                    save_cnt += 1
+                    last_perform = eval_res[2]
+                    # saved_diff = eval_res[-1]
+                    # if next_change_guid:
+                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # else:
+                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # save_cnt += 1
 
                 # elif args.progress_sample:
                 #     # start with samples found on uniformly distributed dataset
