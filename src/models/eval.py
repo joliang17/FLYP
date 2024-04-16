@@ -141,7 +141,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             if 'image_paths' in data:
                 image_paths = data['image_paths']
 
-            logits = utils.get_logits(x, model, classification_head)
+            img_emb, logits = utils.get_logits(x, model, classification_head)
 
             projection_fn = getattr(dataset, 'project_logits', None)
             if projection_fn is not None:
@@ -204,10 +204,11 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
                     cur_y = y[i].item()
                     cur_prob = all_prob[i, cur_y].item()
                     cur_probs = all_prob[i].detach().cpu().numpy()
+                    cur_img_emb = img_emb[i].detach().cpu().numpy()
                     cur_guid = guidance[i].item()
                     if img_id not in dict_img_guid:
                         dict_img_guid[img_id] = []
-                    dict_img_guid[img_id].append([cur_y, cur_guid, cur_prob, cur_probs])
+                    dict_img_guid[img_id].append([cur_y, cur_guid, cur_prob, cur_probs, cur_img_emb])
 
             if hasattr(dataset, 'post_loop_metrics'):
                 all_labels.append(y.cpu().clone().detach())
@@ -246,9 +247,10 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             for cur_guid_res in guid_prob:
                 guid = cur_guid_res[1]
                 prob = cur_guid_res[2]
+                img_emb = cur_guid_res[-1]
                 if guid not in dict_guid_prob:
                     dict_guid_prob[guid] = []
-                dict_guid_prob[guid].append([prob, img_id])
+                dict_guid_prob[guid].append([prob, img_id, img_emb])
 
         metrics['progress_res'] = dict_guid_prob
 
@@ -357,7 +359,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
                                       progress_guid=True, )
         if 'progress_res' in results:
             dict_guid_prob = results['progress_res']
-            dict_guid_prob_new = {key: [[item[0] for item in values], [item[1] for item in values]] for key, values in dict_guid_prob.items()}
+            dict_guid_prob_new = {key: [[item[0] for item in values], [item[1] for item in values], [item[2] for item in values]] for key, values in dict_guid_prob.items()}
             dict_guid_mean = {key: np.mean(values[0]) for key, values in dict_guid_prob_new.items()}
             dict_guid_std = {key: np.std(values[0]) for key, values in dict_guid_prob_new.items()}
 

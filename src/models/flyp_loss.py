@@ -260,11 +260,14 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 if isinstance(value, float):
                     last_perform[key] = 0
                 else:
-                    last_perform[key] = np.zeros_like(np.array(value))
+                    last_perform[key] = copy.deepcopy(value)
+                    last_perform[key][0] = np.zeros_like(last_perform[key][0])
 
             list_img_id = None
+            list_img_emb = None
             if args.progress_metric == 'Prob':
                 list_img_id = copy.deepcopy(value[1])
+                list_img_emb = copy.deepcopy(value[2])
                 value = value[0]
 
             # guidance value
@@ -298,9 +301,9 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             else:
                 # progress as relative increase of prob in each image
                 value_arr = np.array(value)
-                last_arr = np.array(last_perform[key])[0, :]
+                last_arr = np.array(last_perform[key][:2])[0, :]
                 cur_progress = value_arr - last_arr
-                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id]  # saved for analysis
+                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id, list_img_emb]  # saved for analysis
 
                 if weighted_hist_prog is not None:
                     # TODO: exponential moving average
@@ -826,35 +829,18 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        # if args.debug:
-        #     # for epoch in range(4, 20):
-        #     # for epoch in range(0, 1):
-        #     model = clip_encoder
-        #     epoch = 19
-        #     model_path = os.path.join("../FLYP_ori/checkpoints/v0_ori_2/_BS200_WD0.2_LR1e-05_run1", f'checkpoint_19.pt')
+        if args.debug:
+            logger.info(f"Progress evaluation on training data ...")
+            classification_head_new = generate_class_head(model, args, epoch)
+            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+            dict_best_guid = epoch_stats['dict_img_guid']
 
-        #     # model_path = os.path.join("../FLYP/checkpoints/flyp_loss_v655_best/_BS300_WD0.2_LR1e-05_run1",
-        #     #                         f'checkpoint_{epoch}.pt')
-        #     logger.info('Loading model ' + str(model_path))
+            # save guidance_score:
+            with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
+                pickle.dump(dict_best_guid, f)
 
-        #     checkpoint = torch.load(model_path)
-        #     model.load_state_dict(checkpoint['model_state_dict'])
-        #     model = model.cuda()
-        #     model = torch.nn.DataParallel(model, device_ids=devices)
-
-        #     logger.info(f"Progress evaluation on training data ...")
-        #     classification_head_new = generate_class_head(model, args, epoch)
-        #     eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-        #     dict_best_guid = epoch_stats['dict_img_guid']
-        #     # dict_best_guid = progress_eval_train(model=model, args=args, epoch=epoch, logger=logger,
-        #     #                                      progress_ma=progress_ma)
-
-        #     # save guidance_score:
-        #     with open(log_dir + f'/pred_score_OOD_{epoch}.pkl', 'wb') as f:
-        #         pickle.dump(dict_best_guid, f)
-
-        #     # continue
-        #     exit(0)
+            # continue
+            exit(0)
 
         #############################################
         # Evaluate

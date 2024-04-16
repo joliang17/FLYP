@@ -113,7 +113,7 @@ def get_logits(inputs, classifier, classification_head):
         classifier = classifier.to(inputs.device)
         classification_head = classification_head.to(inputs.device)
     feats = classifier(inputs)
-    return classification_head(feats)
+    return feats, classification_head(feats)
 
 
 def get_feats(inputs, classifier):
@@ -129,7 +129,7 @@ def get_probs(inputs, classifier):
     if hasattr(classifier, 'predict_proba'):
         probs = classifier.predict_proba(inputs.detach().cpu().numpy())
         return torch.from_numpy(probs)
-    logits = get_logits(inputs, classifier)
+    _, logits = get_logits(inputs, classifier)
     return logits.softmax(dim=1)
 
 
