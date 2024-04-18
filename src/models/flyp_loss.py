@@ -230,6 +230,20 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     :return:
     """
 
+    def remove_outliers(data):
+        # Calculate Q1, Q3, and IQR
+        Q1 = np.percentile(data, 25)
+        Q3 = np.percentile(data, 75)
+        IQR = Q3 - Q1
+
+        # Determine outliers using IQR
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        # Filter out outliers
+        filtered_data = data[(data >= lower_bound) & (data <= upper_bound)]
+        return filtered_data
+
     def rnd_prog(input_progress, ):
         return np.round(input_progress, 6)
 
@@ -303,20 +317,27 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 value_arr = np.array(value)
                 last_arr = np.array(last_perform[key][:2])[0, :]
                 cur_progress = value_arr - last_arr
-                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id, list_img_emb]  # saved for analysis
+                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id, list_img_emb]  # saved for
+                # analysis
 
                 if weighted_hist_prog is not None:
                     # TODO: exponential moving average
                     cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
 
+                # remove outliers
+                cur_progress = remove_outliers(cur_progress)
+                # use 75% quantile as criteria
+                thres_diff = np.quantile(cur_progress, 75)
+
                 # relative_diff = cur_progress / value_arr
                 mean_diff = np.mean(cur_progress)
                 std_diff = np.std(cur_progress)
 
-                str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                res_progress[guidance_i] = mean_diff  # for guidance ranking
+                str_progress[f"Guidance {guidance_i}"] = rnd_prog(thres_diff)  # for logging
+                res_progress[guidance_i] = thres_diff  # for guidance ranking
                 if print_log:
-                    logger.info(f"Guidance {guidance_i}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+                    logger.info(
+                        f"Guidance {guidance_i}, 75%: {thres_diff}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
 
             if args.ma_progress and progress_ma is not None:
                 # adding current eval to MA list
