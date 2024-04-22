@@ -62,11 +62,12 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
             x = data[input_key].to(device)
             y = data['labels'].to(device)
             guidances = data['guidance'].to(device)
+            seed = data['seed']
             img_ids = data['img_id'].to(device)
             if 'title' in data:
                 title = data['title']
 
-            logits = utils.get_logits(x, model, classification_head)
+            _, logits = utils.get_logits(x, model, classification_head)
 
             # find the largest prob of y
             all_prob = F.softmax(logits, dim=-1)
@@ -76,9 +77,10 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
                 cur_prob = all_prob[i, cur_y].item()
                 # cur_probs = all_prob[i].detach().cpu().numpy()
                 cur_guid = guidances[i].item()
+                cur_seed = seed[i].item()
                 if img_id not in dict_preds:
                     dict_preds[img_id] = []
-                dict_preds[img_id].append([cur_y, cur_guid, cur_prob, ])
+                dict_preds[img_id].append([cur_y, cur_guid, cur_seed, cur_prob, ])
 
     metrics = {}
     metrics['progress_res'] = dict_preds

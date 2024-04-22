@@ -16,6 +16,10 @@ from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
 from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
 import src.datasets as datasets
+import scipy.stats as stats
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+from scipy.stats import mannwhitneyu
+from statsmodels.sandbox.stats.multicomp import multipletests
 import pickle
 import random
 import pdb
@@ -214,6 +218,47 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     return stats
 
 
+def kw_test(Dict_guid_progs, list_guid):
+    # Perform Kruskal-Wallis Test
+    k_statistic, p_value_kw = stats.kruskal(Dict_guid_progs[list_guid[0]], Dict_guid_progs[list_guid[1]], Dict_guid_progs[list_guid[2]], Dict_guid_progs[list_guid[3]])
+    print(f"Kruskal-Wallis Test: H-statistic = {k_statistic}, P-value = {p_value_kw}")
+    print(f"="*50)
+
+    comparisons = []
+    for i in range(len(list_guid)-1):
+        for j in range(i+1, len(list_guid)):
+            comparisons.append((list_guid[i], list_guid[j]))
+    # comparisons = [(100, 90), (100, 70), (100, 50), (90, 70), (90, 50), (70, 50)]
+    p_values = []
+    p_values = []
+
+    for combo in comparisons:
+        stat, p = mannwhitneyu(Dict_guid_progs[combo[0]], Dict_guid_progs[combo[1]], alternative='two-sided')
+        p_values.append(p)
+
+    # Apply Bonferroni Correction
+    corrected_p = multipletests(p_values, method='bonferroni', alpha=0.01)
+
+    # Determine the best category based on how many times it comes out as better
+    best_category_count = {cat: 0 for cat in list_guid}
+    # Interpret the corrected p-values and compare median or mean ranks
+    for (x, y), p_val, reject in zip(comparisons, corrected_p[1], corrected_p[0]):
+        if np.median(Dict_guid_progs[x]) > np.median(Dict_guid_progs[y]):
+            higher = x
+        else:
+            higher = y
+
+        best_category_count[higher] += 1
+            
+        if reject:
+            print(f"{x} vs {y}: P-value = {p_val:.4f}, {higher} is significantly higher.")
+            
+        else:
+            print(f"{x} vs {y}: P-value = {p_val:.4f}, No significant difference, {higher} with a slightly higher median.")
+
+    return best_category_count
+
+
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
                   progress_ma=None, print_log=True):
     """
@@ -229,6 +274,10 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     :param progress_ma:
     :return:
     """
+
+    def find_best_progress(dict_guid_prog):
+        dict_guid_res = kw_test(dict_guid_prog, list_guid=list(dict_guid_prog.keys()))
+        return res_progress
 
     def remove_outliers(data):
         # Calculate Q1, Q3, and IQR
@@ -264,6 +313,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             keywords = 'F1'
         logger.info(f"Computing progress based on metric {keywords}")
 
+        dict_guid_prog = {}
         for key, value in Dict_cur_guidance.items():
             if 'Number' in key:
                 continue
@@ -326,22 +376,27 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
 
                 # remove outliers
                 cur_progress = remove_outliers(cur_progress)
+                dict_guid_prog[guidance_i] = cur_progress
+
                 # use 75% quantile as criteria
-                thres_diff = np.quantile(cur_progress, 75)
+                thres_diff = np.percentile(cur_progress, 75)
 
                 # relative_diff = cur_progress / value_arr
                 mean_diff = np.mean(cur_progress)
                 std_diff = np.std(cur_progress)
 
-                str_progress[f"Guidance {guidance_i}"] = rnd_prog(thres_diff)  # for logging
-                res_progress[guidance_i] = thres_diff  # for guidance ranking
+                str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
+                res_progress[guidance_i] = mean_diff  # for guidance ranking
                 if print_log:
                     logger.info(
-                        f"Guidance {guidance_i}, 75%: {thres_diff}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+                        f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff) }, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
 
             if args.ma_progress and progress_ma is not None:
                 # adding current eval to MA list
                 progress_ma[guidance_i].append(cur_progress)
+
+        # select the guid with highest confidence
+        res_progress = find_best_progress(dict_guid_prog)
 
         # pdb.set_trace()
         last_perform = copy.deepcopy(Dict_cur_guidance)
@@ -350,11 +405,11 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         logger.info(f"Finding best samples")
         # find samples with largest progress?
         # first evaluate each samples' progress
-        # {img_id: [label, guid, prob]}
+        # {img_id: [[label, guid, prob], [label, guid, prob]]}
         Dict_sample_prob = Dict_cur_guidance['progress_res']
         # list_sample_prob: [img_id, guid, prob]
-        list_sample_prob = [[key, value[0][1], value[0][-1]] for key, value in Dict_sample_prob.items()]
-        list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[1], x[0]), reverse=False)
+        list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in value ]
+        list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
         if 'progress_res' not in last_perform:
             last_perform['progress_res'] = None
@@ -375,7 +430,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
 
         # find top samples
-        top_n = 100000
+        # top_n = 100000
+        top_n = len(list_sample_prob) // 4
         str_progress = list_sample_prob[:top_n]
         res_progress = list_sample_prob[:top_n]
         last_perform['progress_res'] = saved_diff['progress_res'][0]
@@ -738,7 +794,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, )
                         last_perform = eval_res[2]
                         logger.info(f"Running on uniform set")
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
@@ -754,7 +810,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find samples with largest progress
                         list_img_guid = [item[:2] for item in res_progress]
                         # eval performance on ood dataset
-                        _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:

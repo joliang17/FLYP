@@ -99,7 +99,7 @@ class CsvDataset(Dataset):
         # select image with given list
         # list_imgs: [img_id, guid]
         if list_imgs is not None:
-            df = df[df.apply(lambda x: [x['img_id'], x['guidance']] in list_imgs, axis=1)]
+            df = df[df.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
 
         self.images = df[img_key].tolist()
@@ -113,6 +113,11 @@ class CsvDataset(Dataset):
                 self.guidance = df['guidance'].tolist()
             else:
                 self.guidance = [100] * len(self.captions)
+
+            if 'seed' in df.columns:
+                self.seed = df['seed'].tolist()
+            else:
+                self.seed = [100] * len(self.captions)
 
         self.img_trans = T.ToPILImage()
 
@@ -177,6 +182,8 @@ class CsvDataset(Dataset):
         if self.return_guidance:
             guidance = self.guidance[idx]
             return_label.append(guidance)
+            seed = self.seed[idx]
+            return_label.append(seed)
 
         if self.return_img_id:
             img_id = self.img_id[idx]
