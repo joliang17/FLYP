@@ -59,7 +59,7 @@ class CsvDataset(Dataset):
         if uniform_guid:
             # only train on a uniformly distributed dataset
             df = df[df['guidance'] == 100]
-            df = df.sample(n=30000, replace=False, ignore_index=True)
+            df = df.sample(n=min(len(df), 30000), replace=False, ignore_index=True)
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
@@ -99,7 +99,11 @@ class CsvDataset(Dataset):
         # select image with given list
         # list_imgs: [img_id, guid]
         if list_imgs is not None:
-            df = df[df.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
+            # unenhanced data
+            df_unaug = df[df['img_id'] < 0]
+            df_aug =  df[df['img_id'] >= 0]
+            df_aug = df_aug[df_aug.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
+            df = pd.concat([df_unaug, df_aug])
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
 
         self.images = df[img_key].tolist()
