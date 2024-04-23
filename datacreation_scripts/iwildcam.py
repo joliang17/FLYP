@@ -178,8 +178,7 @@ def main(args):
         # Method 2
         # select original image as other part of training
         # select generated images + corresponding original image as candidates
-        df_sel = df[df['img_id'] >= 0]
-        df = df[df['img_id'] < 0]
+        df_sel = df[df['img_id'] >= 0]  # df = df[df['img_id'] < 0]
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')

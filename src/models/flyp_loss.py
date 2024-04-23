@@ -814,8 +814,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cnt += 1
 
                         # find samples with largest progress
-                        list_img_guid = [item[:3] for item in
-                                         res_progress]  # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        list_img_guid = [item[:3] for item in res_progress]
+
+                        # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
@@ -910,18 +911,18 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
-        # if args.debug:
-        #     logger.info(f"Progress evaluation on training data ...")
-        #     classification_head_new = generate_class_head(model, args, epoch)
-        #     eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-        #     dict_best_guid = epoch_stats['dict_img_guid']
-        #
-        #     # save guidance_score:
-        #     with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
-        #         pickle.dump(dict_best_guid, f)
-        #
-        #     # continue
-        #     exit(0)
+        if args.debug:
+            logger.info(f"Progress evaluation on training data ...")
+            classification_head_new = generate_class_head(model, args, epoch)
+            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+            dict_best_guid = epoch_stats['dict_img_guid']
+
+            # save guidance_score:
+            with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
+                pickle.dump(dict_best_guid, f)
+
+            # continue
+            exit(0)
 
         #############################################
         # Evaluate
