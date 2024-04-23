@@ -56,17 +56,17 @@ def merge_with_prompt(df, label_to_name, merge_type='train'):
     if merge_type == 'train':
         df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
         df2 = pd.merge(df, label_to_name[['y', 'prompt2']], on='y').rename({'prompt2': 'title'}, axis='columns')
-        df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
+        df_final = pd.concat((df1, df2))[['filename', 'title', 'y', 'strength', 'guidance', 'seed', 'img_id']]
 
         del df1
         del df2
         del df
     else:
         df1 = pd.merge(df, label_to_name[['y', 'prompt1']], on='y').rename({'prompt1': 'title'}, axis='columns')
-        df_final = df1[['filename', 'title', 'y', 'strength', 'guidance', 'img_id']]
+        df_final = df1[['filename', 'title', 'y', 'strength', 'guidance', 'seed', 'img_id']]
 
     df_final = df_final.rename({'filename': 'filepath', 'y': 'label'}, axis='columns')[
-        ['title', 'filepath', 'label', 'strength', 'guidance', 'img_id']]
+        ['title', 'filepath', 'label', 'strength', 'guidance', 'seed', 'img_id']]
     print(f"length of final {merge_type}.csv: {len(df_final)}")
     return df_final
 
@@ -105,6 +105,7 @@ def main(args):
             list_img_cate = os.listdir(cur_sp_path)
             for cate in list_img_cate:
                 cur_strength = int(cate.split('_')[0].replace('Strength', ''))
+                cur_seed = int(cate.split('_')[-1].replace('seed', ''))
                 cur_cate_path = os.path.join(cur_sp_path, cate)
                 list_sub_img = os.listdir(cur_cate_path)
                 list_sub_img = [item for item in list_sub_img if 'jpg' in item]
@@ -116,47 +117,69 @@ def main(args):
                     if len(Dict_filt) > 0:
                         if cate in Dict_filt and cur_sp_f in Dict_filt[cate] and img_name.replace('.jpg', '') in \
                                 Dict_filt[cate][cur_sp_f]:
-                            list_result.append([cur_y, cur_img_path, cur_strength])
+                            list_result.append([cur_y, cur_img_path, cur_strength, cur_seed])
                             filtered_cnt += 1
 
                     else:
-                        list_result.append([cur_y, cur_img_path, cur_strength])
+                        list_result.append([cur_y, cur_img_path, cur_strength, cur_seed])
 
     #############################################
     # using all training data
     print(f'generated data: {len(list_result)}')
+    # df_train_ori = pd.read_csv(f'{args.data_folder}/data/iwildcam/iwildcam_v2.0/train_loss_filt.csv', sep='\t')
     df_train_ori = pd.read_csv(f'{args.data_folder}/data/iwildcam/iwildcam_v2.0/train.csv', sep='\t')
     del df_train_ori['title']
     df_train_ori.drop_duplicates(subset=['filepath', 'label'], keep='last', inplace=True)
     df_train_ori.rename({'filepath': 'filename', 'label': 'y'}, axis='columns', inplace=True)
     df_train_ori['strength'] = 0
-    df_train_ori = df_train_ori[['y', 'filename', 'strength']]
+    df_train_ori['seed'] = 100
+    df_train_ori = df_train_ori[['y', 'filename', 'strength', 'seed']]
     cur_train_ori = df_train_ori.values.tolist()
     list_result.extend(cur_train_ori)
     print(f'Total data: {len(list_result)}')
 
-    df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength'])
+    df = pd.DataFrame(list_result, columns=['y', 'filename', 'strength', 'seed'])
     df.loc[:, 'guidance'] = df['strength'].apply(lambda x: 100 - int(x))
     df.loc[:, 'img_name'] = df['filename'].apply(lambda x: x.split('/')[-1].replace('.jpg', ''))
 
     print('adding img id')
     # change img_name to int img_id
+    # if img_id >= 0: enhanced data
+    # if img_id < 0: data that are not enhanced
     df_count = df.groupby(['img_name']).count()['guidance']
     list_guid_img_name = list(df_count[df_count > 1].index)  # largest 7715
     Dict_img_id = {list_guid_img_name[i]: i for i in range(len(list_guid_img_name))}
 
-    list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  img id start from
+    list_ori_guid = list(df_count[df_count == 1].index)  # largest 124898  non enhanced imgs
     Dict_img_id_ori = {list_ori_guid[i]: i + 1 for i in range(len(list_ori_guid))}
-
     df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
-    # select image_id with all guidance
-    print(f"selecting images with all guidance for guidance selection")
-    df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
-    df_count = df_count.groupby(['img_name',]).count()['guidance'].reset_index()
-    sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, ignore_index=True, random_state=42)['img_name'].values.tolist()
-    df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
-    df_sel = df_sel.groupby(['img_name', 'guidance']).apply(lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+    if not args.sample_guid:
+        # select image_id with all guidance
+        print(f"selecting images with all guidance for guidance selection")
+        df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
+        df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
+        sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
+            'img_name'].values.tolist()
+        df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
+        df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
+            lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+
+        # exclude validate set from training samples
+        df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
+    else:
+        # Method 1
+        # # select equal number of guidance for each seed images
+        # # select 1 generated images per guidance for each samples
+        # print(f"selecting images with equal number of guidance for guidance selection")
+        # df = df.groupby(['img_name', 'guidance']).sample(n=1, replace=False, random_state=42).reset_index(drop=True)
+        # df_sel = df.copy()
+
+        # Method 2
+        # select original image as other part of training
+        # select generated images + corresponding original image as candidates
+        df_sel = df[df['img_id'] >= 0]
+        df = df[df['img_id'] < 0]
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
@@ -174,6 +197,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--sample_guid', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
     parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
