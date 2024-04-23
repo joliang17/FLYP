@@ -817,7 +817,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cnt += 1
 
                         # find samples with largest progress
-                        list_img_guid = [item[:2] for item in res_progress]
+                        list_img_guid = [item[:3] for item in res_progress]
                         # eval performance on ood dataset
                         # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 

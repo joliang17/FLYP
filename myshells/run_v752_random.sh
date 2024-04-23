@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH --job-name=v752
-#SBATCH --output=v752.out.%j
-#SBATCH --error=v752.out.%j
-#SBATCH --time=48:00:00
+#SBATCH --job-name=v752_rand
+#SBATCH --output=v752_rand.out.%j
+#SBATCH --error=v752_rand.out.%j
+#SBATCH --time=24:00:00
 #SBATCH --account=cml-zhou
 #SBATCH --partition=cml-zhou
 #SBATCH --qos=cml-medium
