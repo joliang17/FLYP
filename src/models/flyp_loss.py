@@ -432,8 +432,10 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
             list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
-            saved_diff['progress_res'] = [copy.deepcopy(np.array(list_sample_prob[:, :-1])),
-                                          copy.deepcopy(np.array(list_sample_prob[:, -1]))]  # saved for analysis
+            list_last = [item[:-1] for item in list_sample_prob]
+            list_prev_prob = [item[-1] for item in list_sample_prob]
+            saved_diff['progress_res'] = [list_last,
+                                          list_prev_prob]  # saved for analysis
 
         else:
             # list_sample_prob: [img_id, guid, prob]
