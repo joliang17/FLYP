@@ -263,7 +263,7 @@ def kw_test(Dict_guid_progs, list_guid):
 
 
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
-                  progress_ma=None, print_log=True):
+                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None):
     """
     Find best guidance based on guid group
     :param print_log:
@@ -302,10 +302,11 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
-                 progress_sample=progress_sample)
+                 progress_sample=progress_sample, eval_imgs=sel_imgs)
     str_progress = dict()
     res_progress = dict()
     saved_diff = dict()
+    saved_probs = None
 
     if progress_guid:
         if args.progress_metric == 'Acc':
@@ -408,38 +409,61 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         logger.info(f"Finding best samples")
         # find samples with largest progress?
         # first evaluate each samples' progress
-        # {img_id: [[label, guid, prob], [label, guid, prob]]}
+        # {img_id: [[label, guid, seed, prob], [label, guid, seed, prob]]}
         Dict_sample_prob = Dict_cur_guidance['progress_res']
-        # list_sample_prob: [img_id, guid, prob]
-        list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in value]
-        list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
-        if 'progress_res' not in last_perform:
-            last_perform['progress_res'] = None
+        if args.partial_update and sel_imgs is not None:
+            # update the probability with the new prob
+            list_sample_prob = []
+            for img_pair in prev_probs:
+                img_id, guid, seed, last_prob, prev_prob = img_pair
+                if [img_id, guid, seed] in sel_imgs:
+                    img_probs = Dict_sample_prob[img_id]
+                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed]
+                    # change to new progress
+                    list_sample_prob.append([img_id, guid, seed, new_prob, last_prob])
+                else:
+                    # progress unchanged
+                    list_sample_prob.append([img_id, guid, seed, last_prob, prev_prob])
+
+            logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
+            list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
+
+            saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob[:, :-1]),
+                                          copy.deepcopy(list_sample_prob[:, -1])]  # saved for analysis
 
         else:
-            assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
-        saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
-                                      copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
+            # list_sample_prob: [img_id, guid, prob]
+            list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in
+                                value]
+            list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
-        # merge with last perform
-        for idx, pair in enumerate(list_sample_prob):
-            if last_perform['progress_res'] is not None:
-                last_prob = last_perform['progress_res'][idx][-1]
+            if 'progress_res' not in last_perform:
+                last_perform['progress_res'] = None
+
             else:
-                last_prob = 0
-            pair.append(last_prob)
+                assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
 
-        list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
+            saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
+                                          copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
+
+            # merge with last perform
+            for idx, pair in enumerate(list_sample_prob):
+                if last_perform['progress_res'] is not None:
+                    last_prob = last_perform['progress_res'][idx][-1]
+                else:
+                    last_prob = 0
+                pair.append(last_prob)
 
         # find top samples
         # top_n = 100000
         top_n = len(list_sample_prob) // 4
+        list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
         str_progress = list_sample_prob[:top_n]
         res_progress = list_sample_prob[:top_n]
         last_perform['progress_res'] = saved_diff['progress_res'][0]
 
-    return res_progress, str_progress, last_perform, saved_diff
+    return res_progress, str_progress, last_perform, saved_diff, list_sample_prob
 
 
 def init_guidance_setting(args, logger, ):
@@ -621,18 +645,23 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     total_iter = 0
     next_change_guid = False
     pre_guidance = None
+    prev_probs = None
+    list_img_guid = None
 
+    if args.progress_sample:
+        # ALA progress on sample, need to record the prob for all samples before training
+        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+        last_perform = eval_res[2]
+        prev_probs = eval_res[4]
+        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
+        next_change_guid = True
+        ft_iterator = iter(ft_dataloader)
 
-    if args.uniform_set:
+    elif args.uniform_set:
         start_uniform = total_iter
         if args.progress_guid:
             # start with guid found on uniformly distributed dataset
             eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
-
-        if args.progress_sample:
-            # start with samples found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
             last_perform = eval_res[2]
 
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
@@ -720,7 +749,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                  progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff = eval_res
+                        res_progress, _, last_perform, saved_diff, _ = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
                         cnt += 1
@@ -756,7 +785,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             # find the largest guidance based on progress
                             eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                      progress_ma=progress_ma)
-                            res_progress, _, last_perform, saved_diff = eval_res
+                            res_progress, _, last_perform, saved_diff, _ = eval_res
                             with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                                 pickle.dump(saved_diff, f)
                             cnt += 1
@@ -797,8 +826,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         # record beginning progress prob
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 print_log=False, )
+                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid)
                         last_perform = eval_res[2]
+                        prev_probs = eval_res[4]
                         logger.info(
                             f"Running on uniform set")  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
@@ -807,10 +837,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff = eval_res
+                                                 progress_ma=progress_ma, prev_probs=prev_probs, sel_imgs=list_img_guid)
+                        res_progress, _, last_perform, saved_diff, prev_probs = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
+                            pickle.dump((saved_diff, list_img_guid), f)
                         cnt += 1
 
                         # find samples with largest progress

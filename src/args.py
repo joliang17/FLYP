@@ -109,6 +109,9 @@ def parse_arguments():
     # including neg samples while running on generated data
     parser.add_argument('--include_neg', action=argparse.BooleanOptionalAction)
 
+    # including neg samples while running on generated data
+    parser.add_argument('--partial_update', action=argparse.BooleanOptionalAction)
+
     parser.add_argument('--scheduler', type=str, default='default', )
 
     parser.add_argument('--datalimit', type=int, default=-1, )
