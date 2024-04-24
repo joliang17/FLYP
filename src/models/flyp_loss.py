@@ -106,8 +106,8 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
 
     # load dataloader
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
-                             merge_ori=args.merge_ori, subsample=args.subsample,
-                             return_img_id=True, datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
+                             merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
+                             datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
                              ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
                              logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
@@ -126,7 +126,8 @@ def generate_class_head(model, args, epoch):
     return classification_head_new
 
 
-def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_class=False, log_dir=None, wandb_comment=''):
+def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_class=False, log_dir=None,
+                 wandb_comment=''):
     """
 
     :param model:
@@ -220,13 +221,14 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
 
 def kw_test(Dict_guid_progs, list_guid):
     # Perform Kruskal-Wallis Test
-    k_statistic, p_value_kw = stats.kruskal(Dict_guid_progs[list_guid[0]], Dict_guid_progs[list_guid[1]], Dict_guid_progs[list_guid[2]], Dict_guid_progs[list_guid[3]])
+    k_statistic, p_value_kw = stats.kruskal(Dict_guid_progs[list_guid[0]], Dict_guid_progs[list_guid[1]],
+                                            Dict_guid_progs[list_guid[2]], Dict_guid_progs[list_guid[3]])
     print(f"Kruskal-Wallis Test: H-statistic = {k_statistic}, P-value = {p_value_kw}")
-    print(f"="*50)
+    print(f"=" * 50)
 
     comparisons = []
-    for i in range(len(list_guid)-1):
-        for j in range(i+1, len(list_guid)):
+    for i in range(len(list_guid) - 1):
+        for j in range(i + 1, len(list_guid)):
             comparisons.append((list_guid[i], list_guid[j]))
     # comparisons = [(100, 90), (100, 70), (100, 50), (90, 70), (90, 50), (70, 50)]
     p_values = []
@@ -249,12 +251,13 @@ def kw_test(Dict_guid_progs, list_guid):
             higher = y
 
         best_category_count[higher] += 1
-            
+
         if reject:
             print(f"{x} vs {y}: P-value = {p_val:.4f}, {higher} is significantly higher.")
-            
+
         else:
-            print(f"{x} vs {y}: P-value = {p_val:.4f}, No significant difference, {higher} with a slightly higher median.")
+            print(
+                f"{x} vs {y}: P-value = {p_val:.4f}, No significant difference, {higher} with a slightly higher median.")
 
     return best_category_count
 
@@ -390,7 +393,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 res_progress[guidance_i] = mean_diff  # for guidance ranking
                 if print_log:
                     logger.info(
-                        f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff) }, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
+                        f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
 
             if args.ma_progress and progress_ma is not None:
                 # adding current eval to MA list
@@ -408,7 +411,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         # first evaluate each samples' progress
         # {img_id: [[label, guid, seed, prob], [label, guid, seed, prob]]}
         Dict_sample_prob = Dict_cur_guidance['progress_res']
-        
+
         if args.partial_update and sel_imgs is not None:
             # update the probability with the new prob
             list_sample_prob = []
@@ -422,16 +425,17 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 else:
                     # progress unchanged
                     list_sample_prob.append([img_id, guid, seed, last_prob, prev_prob])
-            
+
             logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
             list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
             saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob[:, :-1]),
-                                        copy.deepcopy(list_sample_prob[:, -1])]  # saved for analysis
+                                          copy.deepcopy(list_sample_prob[:, -1])]  # saved for analysis
 
         else:
             # list_sample_prob: [img_id, guid, prob]
-            list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in value ]
+            list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in
+                                value]
             list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
             if 'progress_res' not in last_perform:
@@ -441,7 +445,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
 
             saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
-                                        copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
+                                          copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
 
             # merge with last perform
             for idx, pair in enumerate(list_sample_prob):
@@ -744,14 +748,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff = eval_res
+                                                 progress_ma=progress_ma)
+                        res_progress, _, last_perform, saved_diff, _ = eval_res
                         with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                             pickle.dump(saved_diff, f)
                         cnt += 1
-                        
-                    # cur_guidance = 100
-                    # cur_guidance_id = list_guidance.index(cur_guidance)
+
+                    # cur_guidance = 100  # cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
                     # select next guid based on progress
                     if args.uniform_set and not next_change_guid:
@@ -765,13 +768,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         start_uniform = total_iter
 
-                        # # record beginning progress prob
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          print_log=False, )
-                        # last_perform = eval_res[2]
-                        
-                        # # eval performance on ood dataset
-                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        # # record beginning progress prob  # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,  #                          print_log=False, )  # last_perform = eval_res[2]
+
+                        # # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
@@ -785,12 +784,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         else:
                             # find the largest guidance based on progress
                             eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                    progress_ma=progress_ma)
-                            res_progress, _, last_perform, saved_diff = eval_res
+                                                     progress_ma=progress_ma)
+                            res_progress, _, last_perform, saved_diff, _ = eval_res
                             with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
                                 pickle.dump(saved_diff, f)
                             cnt += 1
-                            save_cnt = 0
 
                             list_progress = [(guid, prog) for guid, prog in res_progress.items()]
                             list_progress = sorted(list_progress, key=lambda x: x[-1], reverse=True)
@@ -810,12 +808,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 0
 
-                            # # eval performance on ood dataset
-                            # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                            # # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     if args.proportion:
                         ori_proportion = 1 - 1 / args.curriculum_epoch * epoch
-                        
+
                 elif args.progress_sample:
                     # select samples to train based on progress
                     if args.uniform_set and not next_change_guid:
@@ -831,8 +828,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid)
                         last_perform = eval_res[2]
                         prev_probs = eval_res[4]
-                        logger.info(f"Running on uniform set")
-                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        logger.info(
+                            f"Running on uniform set")  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
@@ -848,15 +845,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find samples with largest progress
                         list_img_guid = [item[:3] for item in res_progress]
 
-                        # eval performance on ood dataset
-                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                                   cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
-                                                  ori_proportion=ori_proportion,
-                                                  include_neg=args.include_neg)
+                                                  ori_proportion=ori_proportion, include_neg=args.include_neg)
                     else:
                         # select training samples
                         ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,
