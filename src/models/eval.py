@@ -31,7 +31,7 @@ def process_train_stat(results, train_stats, logger, dataset_name=''):
     return
 
 
-def eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=None):
+def eval_single_dataset_onTrain(image_classifier, args, classification_head, eval_imgs=None, logger=None):
     """
     return image id & guid
     :param image_classifier:
@@ -49,7 +49,7 @@ def eval_single_dataset_onTrain(image_classifier, args, classification_head, log
     # run on given test set
     # guidance and img id are required!
     dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                 return_guidance=True, return_img_id=True, ).dataloader
+                                 return_guidance=True, return_img_id=True, list_imgs=eval_imgs).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -339,7 +339,7 @@ def eval_single_batch_dataset(image_classifier, dataset, args, classification_he
 
 
 def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False,
-             progress_sample=False):
+             progress_sample=False, eval_imgs=None):
     if args.eval_datasets is None:
         return
     info = vars(args)
@@ -347,7 +347,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
     if progress_sample:
         # Evaluate the best guidance on training dataset for each image
         logging_input(f"Evaluating on sample level", logger)
-        results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, )
+        results = eval_single_dataset_onTrain(image_classifier, args, classification_head, logger=logger, eval_imgs=eval_imgs)
 
         train_stats[f"progress_res"] = results['progress_res']
         return info
