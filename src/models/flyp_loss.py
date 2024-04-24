@@ -301,8 +301,11 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
 
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
+    if not args.partial_update:
+        sel_imgs = None
+
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
-                 progress_sample=progress_sample, eval_imgs=sel_imgs)
+                progress_sample=progress_sample, eval_imgs=sel_imgs)
     str_progress = dict()
     res_progress = dict()
     saved_diff = dict()
@@ -429,8 +432,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
             list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
-            saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob[:, :-1]),
-                                          copy.deepcopy(list_sample_prob[:, -1])]  # saved for analysis
+            saved_diff['progress_res'] = [copy.deepcopy(np.array(list_sample_prob[:, :-1])),
+                                          copy.deepcopy(np.array(list_sample_prob[:, -1]))]  # saved for analysis
 
         else:
             # list_sample_prob: [img_id, guid, prob]
@@ -829,8 +832,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                                                  print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid)
                         last_perform = eval_res[2]
                         prev_probs = eval_res[4]
-                        logger.info(
-                            f"Running on uniform set")  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        logger.info(f"Running on uniform set")  
+                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
                         next_change_guid = False
