@@ -46,7 +46,7 @@ META_FOLDER="${root_folder}/data/metadata"
 SAVED_FOLDER="${META_FOLDER}/difficult_2_sample/"
 
 
-python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v2.pkl" --data_folder="${root_folder}" --sample_guid
+#python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v2.pkl" --data_folder="${root_folder}" --sample_guid
 
 
 # uniform dataset + guid >= 50
