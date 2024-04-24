@@ -422,7 +422,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 img_id, guid, seed, last_prob, prev_prob = img_pair
                 if [img_id, guid, seed] in sel_imgs:
                     img_probs = Dict_sample_prob[img_id]
-                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed]
+                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed][0]
                     # change to new progress
                     list_sample_prob.append([img_id, guid, seed, new_prob, last_prob])
                 else:
