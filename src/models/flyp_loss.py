@@ -422,7 +422,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 img_id, guid, seed, last_prob, prev_prob = img_pair
                 if [img_id, guid, seed] in sel_imgs:
                     img_probs = Dict_sample_prob[img_id]
-                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed]
+                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed][0]
                     # change to new progress
                     list_sample_prob.append([img_id, guid, seed, new_prob, last_prob])
                 else:
@@ -432,8 +432,10 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
             list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
 
-            saved_diff['progress_res'] = [copy.deepcopy(np.array(list_sample_prob[:, :-1])),
-                                          copy.deepcopy(np.array(list_sample_prob[:, -1]))]  # saved for analysis
+            list_last = [item[:-1] for item in list_sample_prob]
+            list_prev_prob = [item[-1] for item in list_sample_prob]
+            saved_diff['progress_res'] = [list_last,
+                                          list_prev_prob]  # saved for analysis
 
         else:
             # list_sample_prob: [img_id, guid, prob]
