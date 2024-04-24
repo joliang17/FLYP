@@ -939,20 +939,20 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             # torch.save({'optimizer_state_dict': optimizer.state_dict(),}, optimizer_path)
             logger.info('Saving model to' + str(model_path))
 
-        #############################################
-        # Save the prediction score for each image and prompt for confusion matrix
-        if args.debug:
-            logger.info(f"Progress evaluation on training data ...")
-            classification_head_new = generate_class_head(model, args, epoch)
-            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-            dict_best_guid = epoch_stats['dict_img_guid']
-
-            # save guidance_score:
-            with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
-
-            # continue
-            exit(0)
+        # #############################################
+        # # Save the prediction score for each image and prompt for confusion matrix
+        # if args.debug:
+        #     logger.info(f"Progress evaluation on training data ...")
+        #     classification_head_new = generate_class_head(model, args, epoch)
+        #     eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+        #     dict_best_guid = epoch_stats['dict_img_guid']
+        #
+        #     # save guidance_score:
+        #     with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
+        #         pickle.dump(dict_best_guid, f)
+        #
+        #     # continue
+        #     exit(0)
 
         #############################################
         # Evaluate
