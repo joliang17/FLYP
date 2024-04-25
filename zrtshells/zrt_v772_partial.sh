@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=v772_p
 #SBATCH --account=tianyi-prj-cmsc
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --gpus=a100:1
 #SBATCH --partition=gpu
 #SBATCH --mem-per-cpu=10000
