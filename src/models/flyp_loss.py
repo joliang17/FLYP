@@ -625,7 +625,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             prev_probs = checkpoint['prev_probs']
             stats = checkpoint['stats']
             last_perform = checkpoint['last_perform']
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model.module.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             logger.info(f"Num batches is {num_batches}")
             # next step: start a new stage training with selected samples list_img_guid, the previous progress: prev_probs
