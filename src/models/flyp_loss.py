@@ -603,6 +603,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
 
     cnt = 0
+    step = 0
     stats = []
     last_perform = {}
     prev_probs = None
@@ -612,7 +613,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     if os.path.exists(args.save):
         ckpt_file = f"prevcheckpoint.pt"
         loading_file = os.path.join(args.save, ckpt_file)
-        if os.path.exist(loading_file):
+        if os.path.exists(loading_file):
             load_ckpt = True
             logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
 
