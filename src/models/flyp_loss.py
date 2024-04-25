@@ -549,6 +549,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     preprocess_fn = clip_encoder.train_preprocess
     clip_encoder.process_images = True
     print_every = 100
+    clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1,
+                            use_horovod=False)
 
     log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(
         args.lr) + "_run" + str(args.run)
@@ -576,28 +578,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     # Data initialization
     cur_str_times = 1
     start_epoch = -1
+    load_ckpt = False
 
     dataset_class = getattr(datasets, args.train_dataset)
     logger.info(f"Training dataset {args.train_dataset}")
-
-    # # ############################
-    # # # Based on breakpoint to keep training
-    # if os.path.exists(args.save):
-    #     list_files = os.listdir(args.save)
-    #     if len(list_files) > 0:
-    #         list_ckpt = [int(item.replace('checkpoint_', '')) for item in list_files if 'checkpoint_' in item]
-    #         list_ckpt = sorted(list_ckpt, reverse=True)
-    #         ckpt_file = f"checkpoint_{list_ckpt[0]}"
-    #         loading_file = os.path.join(args.save, ckpt_file)
-    #         logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
-
-    #         checkpoint = torch.load(loading_file)  
-    #         start_epoch = checkpoint['epoch']
-    #         cur_guidance = checkpoint['cur_guidance']
-    #         cur_str_times = checkpoint['cur_str_times']
-    #         cur_guidance_id = checkpoint['cur_guidance_id']
-    #         model.load_state_dict(checkpoint['model_state_dict'])
-    #         # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
@@ -607,67 +591,89 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
-    init_data = init_guidance_setting(args, logger, )
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
-
-    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                              epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
-    ft_iterator = iter(ft_dataloader)
-    num_batches = len(ft_dataloader)
-
-    if args.guidance == -1 and args.curriculum:
-        if args.curriculum_epoch is None:
-            num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
-        else:
-            num_batches = num_batch_ori
-    logger.info(f"Num batches is {num_batches}")
-
     # classification_head.train()
     model.train()
-
-    clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1,
-                            use_horovod=False)
 
     clip_params = list(model.parameters())
     total_params = clip_params
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
+    
+    init_data = init_guidance_setting(args, logger, )
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
+
+    cnt = 0
+    stats = []
+    last_perform = {}
+    prev_probs = None
+    list_img_guid = None
+    ############################
+    # Based on breakpoint to keep training
+    if os.path.exists(args.save):
+        ckpt_file = f"prevcheckpoint.pt"
+        loading_file = os.path.join(args.save, ckpt_file)
+        if os.path.exist(loading_file):
+            load_ckpt = True
+            logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
+
+            checkpoint = torch.load(loading_file)  
+            start_epoch = checkpoint['epoch']
+            step = checkpoint['step']
+            num_batches = checkpoint['num_batches']
+            list_img_guid = checkpoint['list_img_guid']
+            prev_probs = checkpoint['prev_probs']
+            stats = checkpoint['stats']
+            last_perform = checkpoint['last_perform']
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            logger.info(f"Num batches is {num_batches}")
+            # next step: start a new stage training with selected samples list_img_guid, the previous progress: prev_probs
+
+    if not load_ckpt:
+        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
+                                epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
+        ft_iterator = iter(ft_dataloader)
+        num_batches = len(ft_dataloader)
+        if args.guidance == -1 and args.curriculum:
+            if args.curriculum_epoch is None:
+                num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
+            else:
+                num_batches = num_batch_ori
+        logger.info(f"Num batches is {num_batches}")
 
     if args.scheduler in ('default', 'drestart'):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs - start_epoch) * num_batches,
-                              args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches, args.min_lr)
     elif args.scheduler in ('default_slower',):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs - start_epoch) * num_batches * 2,
-                              args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches * 2, args.min_lr)
     elif args.scheduler in ('crestart',):
         scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
         raise ValueError(f'invalid scheduler type {args.scheduler}!')
 
-    stats = []
-    last_perform = {}
-    cnt = 0
     total_iter = 0
     next_change_guid = False
     pre_guidance = None
-    prev_probs = None
-    list_img_guid = None
 
     if args.progress_sample:
-        # ALA progress on sample, need to record the prob for all samples before training
-        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
-        last_perform = eval_res[2]
-        prev_probs = eval_res[4]
-        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
-        next_change_guid = True
+        if not load_ckpt:
+            # start of progress sample, not matter whether use uniform dataset or not, need to run on a small set to obtain progress
+            # ALA progress on sample, need to record the prob for all samples before training
+            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+            last_perform = eval_res[2]
+            prev_probs = eval_res[4]
+            ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
+            next_change_guid = True
+        else:
+            # start next training stage based on saved candidate images
+            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid,
+                                        include_neg=args.include_neg)
         ft_iterator = iter(ft_dataloader)
 
-    elif args.uniform_set:
+    elif args.progress_guid and args.uniform_set:
         start_uniform = total_iter
-        if args.progress_guid:
-            # start with guid found on uniformly distributed dataset
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
-            last_perform = eval_res[2]
+        # start with guid found on uniformly distributed dataset
+        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        last_perform = eval_res[2]
 
         ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
         next_change_guid = True
@@ -676,7 +682,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     # record the progress history (prob diff)
     # when compute the current progress, progress = 0.8 * current + 0.2 * previous progress
     progress_ma = dict()
-
+    adjust_epoch = False
     for epoch in trange(start_epoch + 1, args.epochs):
         # If set curriculum epochs
         if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
@@ -709,8 +715,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Skipping training process")
                 break
 
-            step = i + epoch * num_batches
+            step += 1
             optimizer.zero_grad()
+            if load_ckpt and step >= num_batches * args.curriculum_epoch and not adjust_epoch:
+                # adjust the gap of steps of two experiments
+                adjust_epoch = True
+                break
 
             try:
                 ft_batch = next(ft_iterator)
@@ -837,8 +847,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
                     else:
+                        # finish a stage of training or finish the uniform training
                         next_change_guid = False
-
                         # find the largest guidance based on progress
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
                                                  progress_ma=progress_ma, prev_probs=prev_probs, sel_imgs=list_img_guid)
@@ -851,6 +861,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         list_img_guid = [item[:3] for item in res_progress]
 
                         # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        os.makedirs(args.save, exist_ok=True)
+                        model_path = os.path.join(args.save, f'prevcheckpoint.pt')
+                        torch.save({'epoch': epoch, 'step': step, 'num_batches': num_batches, 'list_img_guid': list_img_guid, 'prev_probs': prev_probs, 'stats': stats, 'last_perform': last_perform, 
+                                    'model_state_dict': model.module.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), }, model_path)
+                        logger.info('Saving model to' + str(model_path))
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
@@ -861,7 +876,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # select training samples
                         ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,
                                                   include_neg=args.include_neg)
-                        pass
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -936,11 +950,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if args.save is not None:
             os.makedirs(args.save, exist_ok=True)
             model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
-            torch.save({'epoch': epoch, 'cur_guidance': cur_guidance, 'cur_str_times': cur_str_times,
-                        'cur_guidance_id': cur_guidance_id, 'model_state_dict': model.module.state_dict(), },
-                       model_path)
-            # optimizer_path = os.path.join(args.save, f'optimizer_{epoch}.pt')
-            # torch.save({'optimizer_state_dict': optimizer.state_dict(),}, optimizer_path)
+            torch.save({'model_state_dict': model.module.state_dict(), }, model_path)
             logger.info('Saving model to' + str(model_path))
 
         #############################################
