@@ -107,9 +107,6 @@ def parse_arguments():
     parser.add_argument('--uniform_set', action=argparse.BooleanOptionalAction)
 
     # including neg samples while running on generated data
-    parser.add_argument('--include_neg', action=argparse.BooleanOptionalAction)
-
-    # including neg samples while running on generated data
     parser.add_argument('--partial_update', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--scheduler', type=str, default='default', )

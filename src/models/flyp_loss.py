@@ -96,7 +96,7 @@ def explore_guid(args, epoch, logger, largest_guid, list_progress):
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, epoch=0, ori_proportion=None,
-              uniform_guid=False, include_neg=False, list_imgs=None):
+              uniform_guid=False, list_imgs=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -108,7 +108,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
                              datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
-                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
+                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, 
                              logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -480,8 +480,11 @@ def init_guidance_setting(args, logger, ):
     num_batch_ori = None
     ori_proportion = None
 
+    df_ori = pd.read_csv(args.ft_data, delimiter='\t')
+    len_ori = len(df_ori[df_ori['guidance'] == 100])
+    num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
+
     if args.curriculum:
-        df_ori = pd.read_csv(args.ft_data, delimiter='\t')
 
         len_data = len(df_ori)
         list_guidance = list(set(df_ori['guidance'].values.tolist()))
@@ -493,8 +496,6 @@ def init_guidance_setting(args, logger, ):
         else:
             # using curriculum_epoch to decide the current guidance
             # finish viewing all guidance data during curriculum_epoch
-            len_ori = len(df_ori[df_ori['guidance'] == 100])
-            num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
             # keep number of iteration during the entire training process the same
             total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
 
@@ -577,7 +578,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # Data initialization
     cur_str_times = 1
-    start_epoch = -1
+    start_epoch = 0
     load_ckpt = False
 
     dataset_class = getattr(datasets, args.train_dataset)
@@ -585,11 +586,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     model = torch.nn.DataParallel(model, device_ids=devices)
     # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
-
-    # init wandb if not debug mode
-    if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
-        wandb.watch(model, log="gradients", log_freq=100)
 
     # classification_head.train()
     model.train()
@@ -600,14 +596,16 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
     
     init_data = init_guidance_setting(args, logger, )
-    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion = init_data
+    cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batches, ori_proportion = init_data
 
     cnt = 0
-    step = 0
+    start_step = 0
+    id_flyp_loss_sum = 0
     stats = []
     last_perform = {}
     prev_probs = None
     list_img_guid = None
+    wandb_id = wandb.util.generate_id()
     ############################
     # Based on breakpoint to keep training
     if os.path.exists(args.save):
@@ -618,29 +616,24 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
 
             checkpoint = torch.load(loading_file)  
+            wandb_id = checkpoint['wandb_id']
             start_epoch = checkpoint['epoch']
-            step = checkpoint['step']
+            start_step = checkpoint['step'] + 1
             num_batches = checkpoint['num_batches']
             list_img_guid = checkpoint['list_img_guid']
             prev_probs = checkpoint['prev_probs']
             stats = checkpoint['stats']
+            id_flyp_loss_sum = checkpoint['id_flyp_loss_sum']
             last_perform = checkpoint['last_perform']
             model.module.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             logger.info(f"Num batches is {num_batches}")
             # next step: start a new stage training with selected samples list_img_guid, the previous progress: prev_probs
 
-    if not load_ckpt:
-        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                                epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
-        ft_iterator = iter(ft_dataloader)
-        num_batches = len(ft_dataloader)
-        if args.guidance == -1 and args.curriculum:
-            if args.curriculum_epoch is None:
-                num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
-            else:
-                num_batches = num_batch_ori
-        logger.info(f"Num batches is {num_batches}")
+    # init wandb if not debug mode
+    if not args.debug:
+        wandb.init(id=wandb_id, resume="allow", project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.watch(model, log="gradients", log_freq=100)
 
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches, args.min_lr)
@@ -659,69 +652,68 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         if not load_ckpt:
             # start of progress sample, not matter whether use uniform dataset or not, need to run on a small set to obtain progress
             # ALA progress on sample, need to record the prob for all samples before training
-            eval_res = progress_eval(model, args, last_perform, 0, logger, progress_sample=True, print_log=False)
+            eval_res = progress_eval(model, args, last_perform, start_epoch, logger, progress_sample=True, print_log=False)
             last_perform = eval_res[2]
             prev_probs = eval_res[4]
-            ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
+            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, uniform_guid=True)
             next_change_guid = True
         else:
             # start next training stage based on saved candidate images
-            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid,
-                                        include_neg=args.include_neg)
-        ft_iterator = iter(ft_dataloader)
+            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid)
 
     elif args.progress_guid and args.uniform_set:
         start_uniform = total_iter
         # start with guid found on uniformly distributed dataset
-        eval_res = progress_eval(model, args, last_perform, 0, logger, progress_guid=True, print_log=False)
+        eval_res = progress_eval(model, args, last_perform, start_epoch, logger, progress_guid=True, print_log=False)
         last_perform = eval_res[2]
 
-        ft_dataloader = load_data(logger, args, clip_encoder, epoch=0, uniform_guid=True)
+        ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, uniform_guid=True)
         next_change_guid = True
-        ft_iterator = iter(ft_dataloader)
+
+    else:
+        # train from the beginning
+        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, epoch=start_epoch, ori_proportion=ori_proportion)
+    
+    ft_iterator = iter(ft_dataloader)
+    logger.info(f"Num batches is {num_batches}")
 
     # record the progress history (prob diff)
     # when compute the current progress, progress = 0.8 * current + 0.2 * previous progress
     progress_ma = dict()
-    adjust_epoch = False
-    for epoch in trange(start_epoch + 1, args.epochs):
-        # If set curriculum epochs
-        if args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
-            if args.scheduler == 'drestart':
-                logger.info('Restart scheduler')
-                scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                                      (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
+    for step in range(start_step, args.epochs * num_batches):
+        # coorresponding epoch
+        epoch = step // num_batches
+        # iteration inside each epoch
+        i = step - epoch * num_batches
+        if step % num_batches == 0:
+            # the begining of current epoch
+            logger.info(f"Epoch : {epoch}")
+            epoch_stats = {}
+            epoch_stats['Epoch'] = epoch
+            epoch_stats['epoch'] = epoch
 
-            if cur_guidance != 100:
-                logger.info('Restart dataloader')
-                cur_guidance = 100
+            # If set curriculum epochs, restart scheduler & dataloader when approaching changing points
+            if args.curriculum and args.curriculum_epoch is not None and epoch >= args.curriculum_epoch:
+                if args.scheduler == 'drestart':
+                    logger.info('Restart scheduler')
+                    scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
+                                        (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
 
-                ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, epoch=epoch, )
-                ft_iterator = iter(ft_dataloader)
-                num_batches = len(ft_dataloader)
+                if cur_guidance != 100:
+                    logger.info('Restart dataloader')
+                    cur_guidance = 100
 
-        logger.info(f"Epoch : {epoch}")
-        epoch_stats = {}
-        epoch_stats['Epoch'] = epoch
-        epoch_stats['epoch'] = epoch
+                    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, epoch=epoch, )
+                    ft_iterator = iter(ft_dataloader)
+                    num_batches = len(ft_dataloader)
 
-        id_flyp_loss_sum = 0
-        model.train()
-        model = model.cuda()
-        # classification_head.train()
+            id_flyp_loss_sum = 0
+            model.train()
 
-        # list_loss_pairs = []
-        for i in trange(num_batches):
-            if args.test:
-                logger.info(f"Skipping training process")
-                break
-
-            step += 1
+        # training process
+        if not args.test:
+            # train the model
             optimizer.zero_grad()
-            if load_ckpt and step >= num_batches * args.curriculum_epoch and not adjust_epoch:
-                # adjust the gap of steps of two experiments
-                adjust_epoch = True
-                break
 
             try:
                 ft_batch = next(ft_iterator)
@@ -828,7 +820,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
                     if args.proportion:
                         ori_proportion = 1 - 1 / args.curriculum_epoch * epoch
-
                 elif args.progress_sample:
                     # select samples to train based on progress
                     if args.uniform_set and not next_change_guid:
@@ -861,22 +852,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         # find samples with largest progress
                         list_img_guid = [item[:3] for item in res_progress]
 
-                        # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
-                        os.makedirs(args.save, exist_ok=True)
-                        model_path = os.path.join(args.save, f'prevcheckpoint.pt')
-                        torch.save({'epoch': epoch, 'step': step, 'num_batches': num_batches, 'list_img_guid': list_img_guid, 'prev_probs': prev_probs, 'stats': stats, 'last_perform': last_perform, 
-                                    'model_state_dict': model.module.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), }, model_path)
-                        logger.info('Saving model to' + str(model_path))
+                # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                os.makedirs(args.save, exist_ok=True)
+                model_path = os.path.join(args.save, f'prevcheckpoint.pt')
+                torch.save({'wandb_id': wandb_id, 'epoch': epoch, 'step': step, 'num_batches': num_batches, 'list_img_guid': list_img_guid, 'prev_probs': prev_probs, 'stats': stats, 'last_perform': last_perform, 'id_flyp_loss_sum': id_flyp_loss_sum,
+                            'model_state_dict': model.module.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), }, model_path)
+                logger.info('Saving model to' + str(model_path))
 
                 if not skip_loading:
                     if not args.progress_sample or uniform_set:
                         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
                                                   cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
-                                                  ori_proportion=ori_proportion, include_neg=args.include_neg)
+                                                  ori_proportion=ori_proportion, )
                     else:
                         # select training samples
-                        ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,
-                                                  include_neg=args.include_neg)
+                        ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,)
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -944,36 +934,38 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
             total_iter += 1
 
-        id_flyp_loss_avg = id_flyp_loss_sum / num_batches
+        # model evluation at the end iteration of current epoch
+        if (step+1) % num_batches == 0:
+            id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
-        #############################################
-        # Saving model
-        if args.save is not None:
-            os.makedirs(args.save, exist_ok=True)
-            model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
-            torch.save({'model_state_dict': model.module.state_dict(), }, model_path)
-            logger.info('Saving model to' + str(model_path))
+            #############################################
+            # Saving model
+            if args.save is not None:
+                os.makedirs(args.save, exist_ok=True)
+                model_path = os.path.join(args.save, f'checkpoint_{epoch}.pt')
+                torch.save({'model_state_dict': model.module.state_dict(), }, model_path)
+                logger.info('Saving model to' + str(model_path))
 
-        #############################################
-        # Save the prediction score for each image and prompt for confusion matrix
-        if args.debug:
-            logger.info(f"Progress evaluation on training data ...")
-            classification_head_new = generate_class_head(model, args, epoch)
-            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-            dict_best_guid = epoch_stats['dict_img_guid']
+            #############################################
+            # Evaluate
+            logger.info(f"Formal evaluation ...")
+            stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
+                                log_dir=log_dir)
 
-            # save guidance_score:
-            with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+            #############################################
+            # Save the prediction score for each image and prompt for confusion matrix
+            if args.debug:
+                logger.info(f"Progress evaluation on training data ...")
+                classification_head_new = generate_class_head(model, args, epoch)
+                eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
+                dict_best_guid = epoch_stats['dict_img_guid']
 
-            # continue
-            exit(0)
+                # save guidance_score:
+                with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
+                    pickle.dump(dict_best_guid, f)
 
-        #############################################
-        # Evaluate
-        logger.info(f"Formal evaluation ...")
-        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
-                             log_dir=log_dir)
+                # continue
+                exit(0)
 
     if args.save is not None:
         return model_path
