@@ -2,7 +2,7 @@
 #SBATCH --job-name=v772
 #SBATCH --account=tianyi-prj-cmsc
 #SBATCH --time=48:00:00
-#SBATCH --gpus=a100:1
+#SBATCH --gpus=h100:1
 #SBATCH --partition=gpu
 #SBATCH --mem-per-cpu=10000
 #SBATCH --ntasks=6
@@ -50,7 +50,7 @@ SAVED_FOLDER="${META_FOLDER}/difficult_2_sample/"
 
 
 # uniform dataset + guid >= 50
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=150 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="flyp_loss_v772" --curriculum --curriculum_epoch=15 --progress_sample --uniform_set --merge_ori --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=300 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="flyp_loss_v772" --curriculum --curriculum_epoch=15 --progress_sample --uniform_set --merge_ori --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
 
 
 ECODE=$?
