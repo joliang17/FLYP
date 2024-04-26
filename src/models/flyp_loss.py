@@ -26,6 +26,24 @@ import pdb
 import math
 import wandb
 import numpy as np
+set_seed(0)
+
+
+def set_seed(seed: int = 42, if_torch: bool=True) -> None:
+    """
+    Set random
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+    if if_torch:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
+    # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    print(f"Random seed set as {seed}")
 
 
 def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
@@ -303,6 +321,13 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     Dict_cur_guidance = {}
     if not args.partial_update:
         sel_imgs = None
+
+    # if progress_sample and sel_imgs is not None and args.explore:
+    #     # explore some samples randomly 
+    #     explore_cnt = int(0.15 * (len(prev_probs) - len(sel_imgs)))
+    #     explore_imgs = random.sample(prev_probs, explore_cnt)
+    #     explore_imgs = [item[:3] for item in explore_imgs]
+    #     sel_imgs.extend(explore_imgs)
 
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
                 progress_sample=progress_sample, eval_imgs=sel_imgs)
