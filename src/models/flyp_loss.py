@@ -26,8 +26,6 @@ import pdb
 import math
 import wandb
 import numpy as np
-set_seed(0)
-
 
 def set_seed(seed: int = 42, if_torch: bool=True) -> None:
     """
@@ -45,6 +43,7 @@ def set_seed(seed: int = 42, if_torch: bool=True) -> None:
     os.environ["PYTHONHASHSEED"] = str(seed)
     print(f"Random seed set as {seed}")
 
+set_seed(0)
 
 def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
     # sequentially use guidance 
@@ -324,10 +323,12 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
 
     # if progress_sample and sel_imgs is not None and args.explore:
     #     # explore some samples randomly 
-    #     explore_cnt = int(0.15 * (len(prev_probs) - len(sel_imgs)))
-    #     explore_imgs = random.sample(prev_probs, explore_cnt)
+    #     exclude_probs = [item for item in prev_probs if item[:3] not in sel_imgs]
+    #     explore_cnt = int(0.15 * len(exclude_probs))
+    #     explore_imgs = random.sample(exclude_probs, explore_cnt)
     #     explore_imgs = [item[:3] for item in explore_imgs]
     #     sel_imgs.extend(explore_imgs)
+    #     logger.info(f"explore {explore_cnt} of images")
 
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
                 progress_sample=progress_sample, eval_imgs=sel_imgs)
@@ -432,6 +433,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
 
         # pdb.set_trace()
         last_perform = copy.deepcopy(Dict_cur_guidance)
+        list_sample_prob = []
 
     elif progress_sample:
         logger.info(f"Finding best samples")
@@ -489,8 +491,17 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         # top_n = 100000
         top_n = len(list_sample_prob) // 4
         list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
-        str_progress = list_sample_prob[:top_n]
-        res_progress = list_sample_prob[:top_n]
+        top_samples = list_sample_prob[:top_n]
+
+        if args.explore:
+            # 2
+            explore_cnt = int(0.15 * (len(list_sample_prob) - top_n))
+            explore_samples = random.sample(list_sample_prob[top_n:], explore_cnt)
+            top_samples.extend(explore_samples)
+            logger.info(f"explore {explore_cnt} of images")
+
+        str_progress = top_samples
+        res_progress = top_samples
         last_perform['progress_res'] = saved_diff['progress_res'][0]
 
     return res_progress, str_progress, last_perform, saved_diff, list_sample_prob
@@ -633,6 +644,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     last_perform = {}
     prev_probs = None
     list_img_guid = None
+    args.progress_guid = 0
     ############################
     # Based on breakpoint to keep training
     if os.path.exists(args.save):
@@ -668,9 +680,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         logger.info(f"Num batches is {num_batches}")
 
     if args.scheduler in ('default', 'drestart'):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
     elif args.scheduler in ('default_slower',):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches * 2, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches * 2, args.min_lr)
     elif args.scheduler in ('crestart',):
         scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
@@ -945,27 +957,20 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 200 == 0)):
-            # # if args.uniform_set and (total_iter % 200 == 0):
-            # if args.uniform_set and total_iter - start_uniform == 1:
-            #     if args.progress_guid:
-            #         # start with guid found on uniformly distributed dataset
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-            #                                  print_log=False, )
-            #         last_perform = eval_res[2]
-            #         # saved_diff = eval_res[-1]
-            #         # if next_change_guid:
-            #         #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #         #         pickle.dump(saved_diff, f)
-            #         # else:
-            #         #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #         #         pickle.dump(saved_diff, f)
-            #         # save_cnt += 1
-
-            #     elif args.progress_sample:
-            #         # start with samples found on uniformly distributed dataset
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
-            #         # last_perform = eval_res[2]
+            if args.uniform_set and total_iter - start_uniform == 1:
+                if args.progress_guid:
+                    # start with guid found on uniformly distributed dataset
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                             print_log=False, )
+                    last_perform = eval_res[2]
+                    # saved_diff = eval_res[-1]
+                    # if next_change_guid:
+                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # else:
+                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
+                    #         pickle.dump(saved_diff, f)
+                    # save_cnt += 1
 
             total_iter += 1
 
