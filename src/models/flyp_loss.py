@@ -419,8 +419,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 std_diff = np.std(cur_progress)
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
-                res_progress[guidance_i] = std_diff  # for guidance ranking
+                res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+                # res_progress[guidance_i] = std_diff  # for guidance ranking
                 if print_log:
                     logger.info(
                         f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
@@ -631,7 +631,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     # init wandb if not debug mode
     if not args.debug:
-        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name, tags=[args.wandb_tag, ])
         wandb.watch(model, log="gradients", log_freq=100)
 
     # classification_head.train()

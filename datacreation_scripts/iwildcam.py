@@ -156,16 +156,19 @@ def main(args):
     if not args.sample_guid:
         # select image_id with all guidance
         print(f"selecting images with all guidance for guidance selection")
-        df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
-        df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
-        sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
-            'img_name'].values.tolist()
-        df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
-        df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
-            lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+        # df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
+        # df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
+        # sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
+        #     'img_name'].values.tolist()
+        # df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
+        # df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
+        #     lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
-        # exclude validate set from training samples
-        df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
+        # # exclude validate set from training samples
+        # df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
+
+        df_sel = df[df['img_id'] >= 0]
+        df = df[df['img_id'] < 0]
     else:
         # Method 1
         # # select equal number of guidance for each seed images
