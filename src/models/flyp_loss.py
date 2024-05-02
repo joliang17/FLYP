@@ -280,7 +280,7 @@ def kw_test(Dict_guid_progs, list_guid):
 
 
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
-                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None):
+                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None, unif_begin=False):
     """
     Find best guidance based on guid group
     :param print_log:
@@ -321,14 +321,14 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     if not args.partial_update:
         sel_imgs = None
 
-    # if progress_sample and sel_imgs is not None and args.explore:
-    #     # explore some samples randomly 
-    #     exclude_probs = [item for item in prev_probs if item[:3] not in sel_imgs]
-    #     explore_cnt = int(0.15 * len(exclude_probs))
-    #     explore_imgs = random.sample(exclude_probs, explore_cnt)
-    #     explore_imgs = [item[:3] for item in explore_imgs]
-    #     sel_imgs.extend(explore_imgs)
-    #     logger.info(f"explore {explore_cnt} of images")
+    if unif_begin and progress_sample and sel_imgs is not None and args.explore and args.uniform_set:
+        # explore some samples randomly 
+        exclude_probs = [item for item in prev_probs if item[:3] not in sel_imgs]
+        explore_cnt = int(0.15 * len(exclude_probs))
+        explore_imgs = random.sample(exclude_probs, explore_cnt)
+        explore_imgs = [item[:3] for item in explore_imgs]
+        sel_imgs.extend(explore_imgs)
+        logger.info(f"explore {explore_cnt} of images")
 
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
                 progress_sample=progress_sample, eval_imgs=sel_imgs)
@@ -419,7 +419,7 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 std_diff = np.std(cur_progress)
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                res_progress[guidance_i] = mean_diff  # for guidance ranking
+                res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
                 if print_log:
                     logger.info(
                         f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
@@ -493,12 +493,18 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
         top_samples = list_sample_prob[:top_n]
 
-        if args.explore:
-            # 2
-            explore_cnt = int(0.15 * (len(list_sample_prob) - top_n))
-            explore_samples = random.sample(list_sample_prob[top_n:], explore_cnt)
-            top_samples.extend(explore_samples)
-            logger.info(f"explore {explore_cnt} of images")
+        if args.random_guid and progress_sample and sel_imgs is not None:
+            # explore some samples randomly 
+            explore_cnt = int(0.4 * len(list_sample_prob))
+            explore_imgs = random.sample(list_sample_prob, explore_cnt)
+            top_samples = explore_imgs
+            logger.info(f"random select {explore_cnt} of images")
+        # elif args.explore:
+        #     # 2
+        #     explore_cnt = int(0.15 * (len(list_sample_prob) - top_n))
+        #     explore_samples = random.sample(list_sample_prob[top_n:], explore_cnt)
+        #     top_samples.extend(explore_samples)
+        #     logger.info(f"explore {explore_cnt} of images")
 
         str_progress = top_samples
         res_progress = top_samples
@@ -691,6 +697,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     total_iter = 0
     next_change_guid = False
     pre_guidance = None
+    start_uniform = 0
 
     if args.progress_sample:
         if not load_ckpt:
@@ -703,8 +710,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             next_change_guid = True
         else:
             # start next training stage based on saved candidate images
-            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid,
-                                        include_neg=args.include_neg)
+            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid,)
         ft_iterator = iter(ft_dataloader)
 
     elif args.progress_guid and args.uniform_set:
@@ -878,7 +884,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         # record beginning progress prob
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid)
+                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid, unif_begin=True)
                         last_perform = eval_res[2]
                         prev_probs = eval_res[4]
                         logger.info(f"Running on uniform set")  
