@@ -419,7 +419,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 std_diff = np.std(cur_progress)
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+                # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+                res_progress[guidance_i] = std_diff  # for guidance ranking
                 if print_log:
                     logger.info(
                         f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
@@ -428,8 +429,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 # adding current eval to MA list
                 progress_ma[guidance_i].append(cur_progress)
 
-        # select the guid with highest confidence
-        res_progress = find_best_progress(dict_guid_prog)
+        # # select the guid with highest confidence
+        # res_progress = find_best_progress(dict_guid_prog)
 
         # pdb.set_trace()
         last_perform = copy.deepcopy(Dict_cur_guidance)
