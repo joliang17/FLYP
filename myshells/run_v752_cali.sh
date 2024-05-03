@@ -22,7 +22,7 @@ source /fs/nexus-scratch/yliang17/miniconda3/bin/activate diffu
 
 TRAIN_FOLDER="../data/train_new"
 TEST_FOLDER="../data/test"
-SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_2_onlyguid_expr/"
+SAVED_FOLDER="../data/metadata/difficult_calibration/"
 
 python datacreation_scripts/iwildcam.py --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --gene_constr='../data/metadata/used_imgid/used_imgid_v2.pkl'
 

@@ -419,8 +419,9 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 std_diff = np.std(cur_progress)
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+                # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
                 # res_progress[guidance_i] = std_diff  # for guidance ranking
+                res_progress[guidance_i] = mean_diff  # for guidance ranking
                 if print_log:
                     logger.info(
                         f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
@@ -651,7 +652,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     last_perform = {}
     prev_probs = None
     list_img_guid = None
-    args.progress_guid = 0
     ############################
     # Based on breakpoint to keep training
     if os.path.exists(args.save):
@@ -676,7 +676,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
     if not load_ckpt:
         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                                epoch=0, ori_proportion=ori_proportion, include_neg=args.include_neg)
+                                epoch=0, ori_proportion=ori_proportion, )
         ft_iterator = iter(ft_dataloader)
         num_batches = len(ft_dataloader)
         if args.guidance == -1 and args.curriculum:
