@@ -118,6 +118,8 @@ def parse_arguments():
 
     parser.add_argument("--wandb_group_name", type=str, default='default', help="wandb group for expr results", )
 
+    parser.add_argument("--wandb_tag", type=str, default='default', help="wandb group for expr results", )
+
     parser.add_argument("--guidance", type=int, default=-1, help="Number of dataloader workers per GPU.")
 
     parser.add_argument("--slurm_job_id", type=int, default=-1, help="SLURM job id.")

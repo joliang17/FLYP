@@ -28,6 +28,25 @@ import wandb
 import numpy as np
 
 
+def set_seed(seed: int = 42, if_torch: bool = True) -> None:
+    """
+    Set random
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+    if if_torch:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    print(f"Random seed set as {seed}")
+
+
+set_seed(0)
+
 def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
     # sequentially use guidance 
     if ctype == 'no_curri':
@@ -96,7 +115,7 @@ def explore_guid(args, epoch, logger, largest_guid, list_progress):
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, epoch=0, ori_proportion=None,
-              uniform_guid=False, list_imgs=None):
+              uniform_guid=False, include_neg=False, list_imgs=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -108,7 +127,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
                              datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
-                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, 
+                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
                              logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -263,7 +282,7 @@ def kw_test(Dict_guid_progs, list_guid):
 
 
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
-                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None):
+                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None, unif_begin=False):
     """
     Find best guidance based on guid group
     :param print_log:
@@ -303,6 +322,15 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
     Dict_cur_guidance = {}
     if not args.partial_update:
         sel_imgs = None
+
+    if unif_begin and progress_sample and sel_imgs is not None and args.explore and args.uniform_set:
+        # explore some samples randomly
+        exclude_probs = [item for item in prev_probs if item[:3] not in sel_imgs]
+        explore_cnt = int(0.15 * len(exclude_probs))
+        explore_imgs = random.sample(exclude_probs, explore_cnt)
+        explore_imgs = [item[:3] for item in explore_imgs]
+        sel_imgs.extend(explore_imgs)
+        logger.info(f"explore {explore_cnt} of images")
 
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
                 progress_sample=progress_sample, eval_imgs=sel_imgs)
@@ -393,6 +421,8 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 std_diff = np.std(cur_progress)
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
+                # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+                # res_progress[guidance_i] = std_diff  # for guidance ranking
                 res_progress[guidance_i] = mean_diff  # for guidance ranking
                 if print_log:
                     logger.info(
@@ -402,11 +432,12 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 # adding current eval to MA list
                 progress_ma[guidance_i].append(cur_progress)
 
-        # select the guid with highest confidence
-        res_progress = find_best_progress(dict_guid_prog)
+        # # select the guid with highest confidence
+        # res_progress = find_best_progress(dict_guid_prog)
 
         # pdb.set_trace()
         last_perform = copy.deepcopy(Dict_cur_guidance)
+        list_sample_prob = []
 
     elif progress_sample:
         logger.info(f"Finding best samples")
@@ -464,8 +495,23 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
         # top_n = 100000
         top_n = len(list_sample_prob) // 4
         list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
-        str_progress = list_sample_prob[:top_n]
-        res_progress = list_sample_prob[:top_n]
+        top_samples = list_sample_prob[:top_n]
+
+        if args.random_guid and progress_sample and sel_imgs is not None:
+            # explore some samples randomly
+            explore_cnt = int(0.4 * len(list_sample_prob))
+            explore_imgs = random.sample(list_sample_prob, explore_cnt)
+            top_samples = explore_imgs
+            logger.info(f"random select {explore_cnt} of images")
+        # elif args.explore:
+        #     # 2
+        #     explore_cnt = int(0.15 * (len(list_sample_prob) - top_n))
+        #     explore_samples = random.sample(list_sample_prob[top_n:], explore_cnt)
+        #     top_samples.extend(explore_samples)
+        #     logger.info(f"explore {explore_cnt} of images")
+
+        str_progress = top_samples
+        res_progress = top_samples
         last_perform['progress_res'] = saved_diff['progress_res'][0]
 
     return res_progress, str_progress, last_perform, saved_diff, list_sample_prob
@@ -477,7 +523,6 @@ def init_guidance_setting(args, logger, ):
     len_data = None
     loop_times = 1
     list_guidance = None
-    num_batch_ori = None
     ori_proportion = None
 
     df_ori = pd.read_csv(args.ft_data, delimiter='\t')
@@ -587,6 +632,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     model = torch.nn.DataParallel(model, device_ids=devices)
     # classification_head = torch.nn.DataParallel(classification_head, device_ids=devices)
 
+    # init wandb if not debug mode
+    if not args.debug:
+        wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name,
+                   tags=[args.wandb_tag, ])
+        wandb.watch(model, log="gradients", log_freq=100)
+
     # classification_head.train()
     model.train()
 
@@ -635,10 +686,21 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(id=wandb_id, resume="allow", project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
+    if not load_ckpt:
+        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
+                                  epoch=0, ori_proportion=ori_proportion, )
+        ft_iterator = iter(ft_dataloader)
+        num_batches = len(ft_dataloader)
+        if args.guidance == -1 and args.curriculum:
+            if args.curriculum_epoch is None:
+                num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(
+                    list_guidance)
+        logger.info(f"Num batches is {num_batches}")
+
     if args.scheduler in ('default', 'drestart'):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
     elif args.scheduler in ('default_slower',):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, args.epochs * num_batches * 2, args.min_lr)
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches * 2, args.min_lr)
     elif args.scheduler in ('crestart',):
         scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
     else:
@@ -647,6 +709,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     total_iter = 0
     next_change_guid = False
     pre_guidance = None
+    start_uniform = 0
 
     if args.progress_sample:
         if not load_ckpt:
@@ -660,6 +723,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         else:
             # start next training stage based on saved candidate images
             ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid)
+        ft_iterator = iter(ft_dataloader)
 
     elif args.progress_guid and args.uniform_set:
         start_uniform = total_iter
@@ -673,7 +737,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     else:
         # train from the beginning
         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, epoch=start_epoch, ori_proportion=ori_proportion)
-    
+
     ft_iterator = iter(ft_dataloader)
     logger.info(f"Num batches is {num_batches}")
 
@@ -832,7 +896,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         next_change_guid = True
                         # record beginning progress prob
                         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid)
+                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid,
+                                                 unif_begin=True)
                         last_perform = eval_res[2]
                         prev_probs = eval_res[4]
                         logger.info(f"Running on uniform set")  
@@ -910,27 +975,13 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            # # if args.uniform_set and ((total_iter - start_uniform <= 20) or (total_iter % 200 == 0)):
-            # # if args.uniform_set and (total_iter % 200 == 0):
-            # if args.uniform_set and total_iter - start_uniform == 1:
-            #     if args.progress_guid:
-            #         # start with guid found on uniformly distributed dataset
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-            #                                  print_log=False, )
-            #         last_perform = eval_res[2]
-            #         # saved_diff = eval_res[-1]
-            #         # if next_change_guid:
-            #         #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #         #         pickle.dump(saved_diff, f)
-            #         # else:
-            #         #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-            #         #         pickle.dump(saved_diff, f)
-            #         # save_cnt += 1
-
-            #     elif args.progress_sample:
-            #         # start with samples found on uniformly distributed dataset
-            #         eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True, print_log=False)
-            #         # last_perform = eval_res[2]
+            if args.uniform_set and total_iter - start_uniform == 1:
+                if args.progress_guid:
+                    # start with guid found on uniformly distributed dataset
+                    eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                                             print_log=False, )
+                    last_perform = eval_res[
+                        2]  # saved_diff = eval_res[-1]  # if next_change_guid:  #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:  #         pickle.dump(saved_diff, f)  # else:  #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:  #         pickle.dump(saved_diff, f)  # save_cnt += 1
 
             total_iter += 1
 

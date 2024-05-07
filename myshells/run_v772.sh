@@ -4,7 +4,7 @@
 #SBATCH --output=v772_2.out.%j
 #SBATCH --error=v772_2.out.%j
 #SBATCH --time=48:00:00
-#SBATCH --account=scavenger 
+#SBATCH --account=scavenger
 #SBATCH --partition=scavenger
 #SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --cpus-per-task=4

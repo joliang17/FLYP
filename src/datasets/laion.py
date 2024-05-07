@@ -68,12 +68,12 @@ class CsvDataset(Dataset):
         if guidance is not None and 'guidance' in df.columns:
             # only positive is included if guid != 100
             df_unenhanced = df[df['img_id'] < 0]
-            df = df[df['guidance'] == guidance]
+            df = df[(df['guidance'] == guidance) & (df['img_id'] >= 0)]
             if datalimit != -1 and len(df) > datalimit:
                 df = df.sample(n=datalimit, replace=False, ignore_index=True)
                 logging_input(f'sampling guid={guidance} with {len(df)} samples.', logger)
 
-            if merge_ori and guidance != 100:
+            if merge_ori:
                 if subsample:
                     df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
 
