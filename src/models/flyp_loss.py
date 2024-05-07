@@ -529,7 +529,8 @@ def init_guidance_setting(args, logger, ):
 
         len_data = len(df_ori)
         list_guidance = list(set(df_ori['guidance'].values.tolist()))
-        list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
+        # list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
+        list_guidance = sorted(list_guidance, reverse=True)  # 0 --> 100
         if args.curriculum_epoch is None:
             # start from guidance = 0
             cur_guidance_id = 0
@@ -610,13 +611,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     # load finetuned model here
     if args.cont_finetune:
         model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
-                                  f'checkpoint_15.pt')
+                                  f'checkpoint_17.pt')
 
         # model_path = os.path.join("checkpoints/flyp_loss_v7152/_BS300_WD0.2_LR1e-05_run1",
         #                           f'checkpoint_1.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
+        # model.load_state_dict(checkpoint)  
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -807,12 +809,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
 
                         # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff, _ = eval_res
-                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                        cnt += 1
+                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
+                        #                          progress_ma=progress_ma)
+                        # res_progress, _, last_perform, saved_diff, _ = eval_res
+                        # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
+                        #     pickle.dump(saved_diff, f)
+                        # cnt += 1
 
                     # cur_guidance = 100  # cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
@@ -994,14 +996,26 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         #############################################
         # Save the prediction score for each image and prompt for confusion matrix
         if args.debug:
-            logger.info(f"Progress evaluation on training data ...")
-            classification_head_new = generate_class_head(model, args, epoch)
-            eval_results = evaluate(model, args, classification_head_new, epoch_stats, logger=logger)
-            dict_best_guid = epoch_stats['dict_img_guid']
+            for i in range(20):
+                model_path = f'checkpoints/flyp_loss_v752_all/_BS256_WD0.2_LR1e-05_run1/checkpoint_{i}.pt'
+                logger.info(f"evaluation on {model_path} ...")
 
-            # save guidance_score:
-            with open(log_dir + f'/pred_score_train.pkl', 'wb') as f:
-                pickle.dump(dict_best_guid, f)
+                # load model
+                checkpoint = torch.load(model_path)
+                model.module.load_state_dict(checkpoint['model_state_dict'])
+                # model = model.cuda()
+                # model = torch.nn.DataParallel(model, device_ids=devices)
+
+                classification_head_new = generate_class_head(model, args, epoch)
+                # evaluate on training set
+                eval_results = evaluate(model, args, classification_head_new, epoch_stats, progress_guid=True, logger=logger)
+
+                dict_best_guid = epoch_stats['dict_img_guid']
+                print(f"{len(dict_best_guid)}")
+
+                # save guidance_score:
+                with open(log_dir + f'/model_{i}_train.pkl', 'wb') as f:
+                    pickle.dump(dict_best_guid, f)
 
             # continue
             exit(0)

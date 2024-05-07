@@ -167,8 +167,8 @@ def main(args):
         # exclude validate set from training samples
         df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
 
-        # df_sel = df[df['img_id'] >= 0]
-        # df = df[df['img_id'] < 0]
+        df_sel = df[df['img_id'] >= 0]
+        df = df[df['img_id'] < 0]
     else:
         # Method 1
         # # select equal number of guidance for each seed images
