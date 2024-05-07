@@ -116,7 +116,7 @@ def explore_guid(args, epoch, logger, largest_guid, list_progress):
 
 
 def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, epoch=0, ori_proportion=None,
-              uniform_guid=False, include_neg=False, list_imgs=None):
+              uniform_guid=False, list_imgs=None):
     if cur_guidance is not None:
         logger.info(f"loading image guidance = {cur_guidance}, loop times {cur_str_times}")
         if not args.debug:
@@ -128,7 +128,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
                              datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
-                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, include_neg=include_neg,
+                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, 
                              logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
