@@ -47,6 +47,7 @@ def set_seed(seed: int = 42, if_torch: bool = True) -> None:
 
 set_seed(0)
 
+
 def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
     # sequentially use guidance 
     if ctype == 'no_curri':
@@ -282,7 +283,7 @@ def kw_test(Dict_guid_progs, list_guid):
 
 
 def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=False, progress_sample=False,
-                  progress_ma=None, print_log=True, sel_imgs=None, prev_probs=None, unif_begin=False):
+                  progress_ma=None, print_log=True, ):
     """
     Find best guidance based on guid group
     :param print_log:
@@ -320,199 +321,108 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
 
     classification_head_new = generate_class_head(model, args, epoch)
     Dict_cur_guidance = {}
-    if not args.partial_update:
-        sel_imgs = None
-
-    if unif_begin and progress_sample and sel_imgs is not None and args.explore and args.uniform_set:
-        # explore some samples randomly
-        exclude_probs = [item for item in prev_probs if item[:3] not in sel_imgs]
-        explore_cnt = int(0.15 * len(exclude_probs))
-        explore_imgs = random.sample(exclude_probs, explore_cnt)
-        explore_imgs = [item[:3] for item in explore_imgs]
-        sel_imgs.extend(explore_imgs)
-        logger.info(f"explore {explore_cnt} of images")
 
     _ = evaluate(model, args, classification_head_new, Dict_cur_guidance, logger=logger, progress_guid=progress_guid,
-                progress_sample=progress_sample, eval_imgs=sel_imgs)
+                 progress_sample=progress_sample, )
     str_progress = dict()
     res_progress = dict()
     saved_diff = dict()
-    saved_probs = None
 
-    if progress_guid:
-        if args.progress_metric == 'Acc':
-            keywords = 'Accuracy'
-        elif args.progress_metric == 'Prob':
-            keywords = 'Values'
-        else:
-            keywords = 'F1'
-        logger.info(f"Computing progress based on metric {keywords}")
+    if args.progress_metric == 'Acc':
+        keywords = 'Accuracy'
+    elif args.progress_metric == 'Prob':
+        keywords = 'Values'
+    else:
+        keywords = 'F1'
+    logger.info(f"Computing progress based on metric {keywords}")
 
-        dict_guid_prog = {}
-        for key, value in Dict_cur_guidance.items():
-            if 'Number' in key:
-                continue
-            if keywords not in key:
-                continue
+    dict_guid_prog = {}
+    for key, value in Dict_cur_guidance.items():
+        if 'Number' in key:
+            continue
+        if keywords not in key:
+            continue
 
-            if key not in last_perform:
-                if isinstance(value, float):
-                    last_perform[key] = 0
-                else:
-                    last_perform[key] = copy.deepcopy(value)
-                    last_perform[key][0] = np.zeros_like(last_perform[key][0])
-
-            list_img_id = None
-            list_img_emb = None
-            if args.progress_metric == 'Prob':
-                list_img_id = copy.deepcopy(value[1])
-                list_img_emb = copy.deepcopy(value[2])
-                value = value[0]
-
-            # guidance value
-            list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
-            guidance_i = copy.deepcopy(key)
-            for replace_word in list_replace:
-                guidance_i = guidance_i.replace(replace_word, '')
-            guidance_i = int(guidance_i)
-
-            # compute moving average of progress based on history
-            # moving average the progress here
-            # adding current
-            weighted_hist_prog = None
-            if args.ma_progress and progress_ma is not None:
-                if guidance_i in progress_ma:
-                    weighted_hist_prog = progress_ma[guidance_i][-1]
-                else:
-                    progress_ma[guidance_i] = []
-
-            if args.progress_metric != 'Prob':
-                cur_progress = value - last_perform[key]
-                if weighted_hist_prog is not None:
-                    # TODO: exponential moving average
-                    cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
-
-                str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
-                res_progress[guidance_i] = cur_progress  # for guidance ranking
-                if print_log:
-                    logger.info(f"Guidance {guidance_i} diff: {cur_progress}")
-
+        if key not in last_perform:
+            if isinstance(value, float):
+                last_perform[key] = 0
             else:
-                # progress as relative increase of prob in each image
-                value_arr = np.array(value)
-                last_arr = np.array(last_perform[key][:2])[0, :]
-                cur_progress = value_arr - last_arr
-                saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id, list_img_emb]  # saved for
-                # analysis
+                last_perform[key] = copy.deepcopy(value)
+                last_perform[key][0] = np.zeros_like(last_perform[key][0])
 
-                if weighted_hist_prog is not None:
-                    # TODO: exponential moving average
-                    cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
+        list_img_id = None
+        list_img_emb = None
+        if args.progress_metric == 'Prob':
+            list_img_id = copy.deepcopy(value[1])
+            list_img_emb = copy.deepcopy(value[2])
+            value = value[0]
 
-                # remove outliers
-                cur_progress = remove_outliers(cur_progress)
-                dict_guid_prog[guidance_i] = cur_progress
+        # guidance value
+        list_replace = ['Strength', 'Guidance', ' Accuracy', ' F1', ' Values']
+        guidance_i = copy.deepcopy(key)
+        for replace_word in list_replace:
+            guidance_i = guidance_i.replace(replace_word, '')
+        guidance_i = int(guidance_i)
 
-                # use 75% quantile as criteria
-                thres_diff = np.percentile(cur_progress, 75)
+        # compute moving average of progress based on history
+        # moving average the progress here
+        # adding current
+        weighted_hist_prog = None
+        if args.ma_progress and progress_ma is not None:
+            if guidance_i in progress_ma:
+                weighted_hist_prog = progress_ma[guidance_i][-1]
+            else:
+                progress_ma[guidance_i] = []
 
-                # relative_diff = cur_progress / value_arr
-                mean_diff = np.mean(cur_progress)
-                std_diff = np.std(cur_progress)
+        if args.progress_metric != 'Prob':
+            cur_progress = value - last_perform[key]
+            if weighted_hist_prog is not None:
+                cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
 
-                str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
-                # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
-                # res_progress[guidance_i] = std_diff  # for guidance ranking
-                res_progress[guidance_i] = mean_diff  # for guidance ranking
-                if print_log:
-                    logger.info(
-                        f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
-
-            if args.ma_progress and progress_ma is not None:
-                # adding current eval to MA list
-                progress_ma[guidance_i].append(cur_progress)
-
-        # # select the guid with highest confidence
-        # res_progress = find_best_progress(dict_guid_prog)
-
-        # pdb.set_trace()
-        last_perform = copy.deepcopy(Dict_cur_guidance)
-        list_sample_prob = []
-
-    elif progress_sample:
-        logger.info(f"Finding best samples")
-        # find samples with largest progress?
-        # first evaluate each samples' progress
-        # {img_id: [[label, guid, seed, prob], [label, guid, seed, prob]]}
-        Dict_sample_prob = Dict_cur_guidance['progress_res']
-
-        if args.partial_update and sel_imgs is not None:
-            # update the probability with the new prob
-            list_sample_prob = []
-            for img_pair in prev_probs:
-                img_id, guid, seed, last_prob, prev_prob = img_pair
-                if [img_id, guid, seed] in sel_imgs:
-                    img_probs = Dict_sample_prob[img_id]
-                    new_prob = [item[-1] for item in img_probs if item[1] == guid and item[2] == seed][0]
-                    # change to new progress
-                    list_sample_prob.append([img_id, guid, seed, new_prob, last_prob])
-                else:
-                    # progress unchanged
-                    list_sample_prob.append([img_id, guid, seed, last_prob, prev_prob])
-
-            logger.info(f"Updating probs, num before: {len(prev_probs)}, num after: {len(list_sample_prob)}")
-            list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
-
-            list_last = [item[:-1] for item in list_sample_prob]
-            list_prev_prob = [item[-1] for item in list_sample_prob]
-            saved_diff['progress_res'] = [list_last,
-                                          list_prev_prob]  # saved for analysis
+            str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
+            res_progress[guidance_i] = cur_progress  # for guidance ranking
+            if print_log:
+                logger.info(f"Guidance {guidance_i} diff: {cur_progress}")
 
         else:
-            # list_sample_prob: [img_id, guid, prob]
-            list_sample_prob = [[key, val[1], val[2], val[3]] for key, value in Dict_sample_prob.items() for val in
-                                value]
-            list_sample_prob = sorted(list_sample_prob, key=lambda x: (x[2], x[1], x[0]), reverse=False)
+            # progress as relative increase of prob in each image
+            value_arr = np.array(value)
+            last_arr = np.array(last_perform[key][:2])[0, :]
+            cur_progress = value_arr - last_arr
+            saved_diff[guidance_i] = [value_arr.copy(), last_arr.copy(), list_img_id, list_img_emb]  # saved for
+            # analysis
 
-            if 'progress_res' not in last_perform:
-                last_perform['progress_res'] = None
+            if weighted_hist_prog is not None:
+                cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
 
-            else:
-                assert len(list_sample_prob) == len(last_perform['progress_res']), "length of sample prob are different"
+            # remove outliers
+            cur_progress = remove_outliers(cur_progress)
+            dict_guid_prog[guidance_i] = cur_progress
 
-            saved_diff['progress_res'] = [copy.deepcopy(list_sample_prob),
-                                          copy.deepcopy(last_perform['progress_res'])]  # saved for analysis
+            # use 75% quantile as criteria
+            thres_diff = np.percentile(cur_progress, 75)
 
-            # merge with last perform
-            for idx, pair in enumerate(list_sample_prob):
-                if last_perform['progress_res'] is not None:
-                    last_prob = last_perform['progress_res'][idx][-1]
-                else:
-                    last_prob = 0
-                pair.append(last_prob)
+            # relative_diff = cur_progress / value_arr
+            mean_diff = np.mean(cur_progress)
+            std_diff = np.std(cur_progress)
 
-        # find top samples
-        # top_n = 100000
-        top_n = len(list_sample_prob) // 4
-        list_sample_prob = sorted(list_sample_prob, key=lambda x: x[-2] - x[-1], reverse=True)
-        top_samples = list_sample_prob[:top_n]
+            str_progress[f"Guidance {guidance_i}"] = rnd_prog(mean_diff)  # for logging
+            # res_progress[guidance_i] = np.max(cur_progress) - np.min(cur_progress)  # for guidance ranking
+            # res_progress[guidance_i] = std_diff  # for guidance ranking
+            res_progress[guidance_i] = mean_diff  # for guidance ranking
+            if print_log:
+                logger.info(
+                    f"Guidance {guidance_i}, 75%: {rnd_prog(thres_diff)}, mean: {rnd_prog(mean_diff)}, std: {rnd_prog(std_diff)}")
 
-        if args.random_guid and progress_sample and sel_imgs is not None:
-            # explore some samples randomly
-            explore_cnt = int(0.4 * len(list_sample_prob))
-            explore_imgs = random.sample(list_sample_prob, explore_cnt)
-            top_samples = explore_imgs
-            logger.info(f"random select {explore_cnt} of images")
-        # elif args.explore:
-        #     # 2
-        #     explore_cnt = int(0.15 * (len(list_sample_prob) - top_n))
-        #     explore_samples = random.sample(list_sample_prob[top_n:], explore_cnt)
-        #     top_samples.extend(explore_samples)
-        #     logger.info(f"explore {explore_cnt} of images")
+        if args.ma_progress and progress_ma is not None:
+            # adding current eval to MA list
+            progress_ma[guidance_i].append(cur_progress)
 
-        str_progress = top_samples
-        res_progress = top_samples
-        last_perform['progress_res'] = saved_diff['progress_res'][0]
+    # # select the guid with highest confidence
+    # res_progress = find_best_progress(dict_guid_prog)
+
+    last_perform = copy.deepcopy(Dict_cur_guidance)
+    list_sample_prob = []
 
     return res_progress, str_progress, last_perform, saved_diff, list_sample_prob
 
@@ -585,6 +495,20 @@ def init_guidance_setting(args, logger, ):
     return cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batch_ori, ori_proportion
 
 
+def define_scheduler(args, optimizer, num_batches):
+
+    if args.scheduler in ('default', 'drestart'):
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
+    elif args.scheduler in ('default_slower',):
+        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches * 2, args.min_lr)
+    elif args.scheduler in ('crestart',):
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
+    else:
+        raise ValueError(f'invalid scheduler type {args.scheduler}!')
+
+    return scheduler
+
+
 def flyp_loss(args, clip_encoder, classification_head, logger):
     model_path = ''
 
@@ -645,17 +569,18 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     total_params = clip_params
     params = [p for p in total_params if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.wd)
-    
+
     init_data = init_guidance_setting(args, logger, )
     cur_guidance_id, cur_guidance, list_guidance, loop_times, len_data, num_batches, ori_proportion = init_data
 
+    next_change_guid = False
+    pre_guidance = None
+    start_uniform = 0
     cnt = 0
     start_step = 0
     id_flyp_loss_sum = 0
     stats = []
     last_perform = {}
-    prev_probs = None
-    list_img_guid = None
     wandb_id = wandb.util.generate_id()
     ############################
     # Based on breakpoint to keep training
@@ -666,77 +591,66 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             load_ckpt = True
             logger.info(f"Loading existing checkpoint {ckpt_file} and keep training...")
 
-            checkpoint = torch.load(loading_file)  
+            checkpoint = torch.load(loading_file)
             wandb_id = checkpoint['wandb_id']
             start_epoch = checkpoint['epoch']
             start_step = checkpoint['step'] + 1
             num_batches = checkpoint['num_batches']
-            list_img_guid = checkpoint['list_img_guid']
-            prev_probs = checkpoint['prev_probs']
             stats = checkpoint['stats']
+            start_uniform = checkpoint['start_uniform']
+            next_change_guid = checkpoint['next_change_guid']
             id_flyp_loss_sum = checkpoint['id_flyp_loss_sum']
             last_perform = checkpoint['last_perform']
             model.module.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             logger.info(f"Num batches is {num_batches}")
-            # next step: start a new stage training with selected samples list_img_guid, the previous progress: prev_probs
 
     # init wandb if not debug mode
     if not args.debug:
-        wandb.init(id=wandb_id, resume="allow", project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name)
+        wandb.init(id=wandb_id, resume="allow", project="sd_exprs", config=args, name=args.exp_name,
+                   group=args.wandb_group_name)
         wandb.watch(model, log="gradients", log_freq=100)
 
     if not load_ckpt:
+        # train from start
         ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
-                                  epoch=0, ori_proportion=ori_proportion, )
-        ft_iterator = iter(ft_dataloader)
+                                  epoch=start_epoch, ori_proportion=ori_proportion, )
         num_batches = len(ft_dataloader)
-        if args.guidance == -1 and args.curriculum:
-            if args.curriculum_epoch is None:
-                num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(
-                    list_guidance)
+        if args.guidance == -1 and args.curriculum and args.curriculum_epoch is None:
+            num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
         logger.info(f"Num batches is {num_batches}")
 
-    if args.scheduler in ('default', 'drestart'):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
-    elif args.scheduler in ('default_slower',):
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches * 2, args.min_lr)
-    elif args.scheduler in ('crestart',):
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=num_batches, T_mult=1, eta_min=0.01, last_epoch=-1)
-    else:
-        raise ValueError(f'invalid scheduler type {args.scheduler}!')
+    # load scheduler
+    scheduler = define_scheduler(args, optimizer, num_batches)
 
-    total_iter = 0
-    next_change_guid = False
-    pre_guidance = None
-    start_uniform = 0
-
-    if args.progress_sample:
+    # if train from start: start with uniform training
+    # if train from previous checkpoint:
+    #       if next_change_guid: load uniform dataset for train, eval the progress at +1 step
+    #       else: load guidance data
+    if args.progress_guid and args.uniform_set:
         if not load_ckpt:
-            # start of progress sample, not matter whether use uniform dataset or not, need to run on a small set to obtain progress
-            # ALA progress on sample, need to record the prob for all samples before training
-            eval_res = progress_eval(model, args, last_perform, start_epoch, logger, progress_sample=True, print_log=False)
+            start_uniform = start_step
+            # start with guid found on uniformly distributed dataset
+            eval_res = progress_eval(model, args, last_perform, start_epoch, logger, progress_guid=True,
+                                     print_log=False)
             last_perform = eval_res[2]
-            prev_probs = eval_res[4]
+
             ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, uniform_guid=True)
             next_change_guid = True
         else:
-            # start next training stage based on saved candidate images
-            ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, list_imgs=list_img_guid)
-        ft_iterator = iter(ft_dataloader)
+            if next_change_guid:
+                uniform_set = True
+                start_uniform = start_step
+            else:
+                uniform_set = False
 
-    elif args.progress_guid and args.uniform_set:
-        start_uniform = total_iter
-        # start with guid found on uniformly distributed dataset
-        eval_res = progress_eval(model, args, last_perform, start_epoch, logger, progress_guid=True, print_log=False)
-        last_perform = eval_res[2]
-
-        ft_dataloader = load_data(logger, args, clip_encoder, epoch=start_epoch, uniform_guid=True)
-        next_change_guid = True
-
+            ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
+                                      cur_str_times=cur_str_times, epoch=start_epoch, uniform_guid=uniform_set,
+                                      ori_proportion=ori_proportion, )
     else:
         # train from the beginning
-        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times, epoch=start_epoch, ori_proportion=ori_proportion)
+        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance, cur_str_times=cur_str_times,
+                                  epoch=start_epoch, ori_proportion=ori_proportion)
 
     ft_iterator = iter(ft_dataloader)
     logger.info(f"Num batches is {num_batches}")
@@ -761,7 +675,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 if args.scheduler == 'drestart':
                     logger.info('Restart scheduler')
                     scheduler = cosine_lr(optimizer, args.lr, args.warmup_length,
-                                        (args.epochs - start_epoch - args.curriculum_epoch) * num_batches, args.min_lr)
+                                          (args.epochs - start_epoch - args.curriculum_epoch) * num_batches,
+                                          args.min_lr)
 
                 if cur_guidance != 100:
                     logger.info('Restart dataloader')
@@ -838,11 +753,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance = None
                         uniform_set = True
                         next_change_guid = True
-                        start_uniform = total_iter
-
-                        # # record beginning progress prob  # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,  #                          print_log=False, )  # last_perform = eval_res[2]
-
-                        # # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
+                        start_uniform = step
 
                     else:
                         next_change_guid = False
@@ -880,58 +791,22 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 0
 
-                            # # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
-
                     if args.proportion:
                         ori_proportion = 1 - 1 / args.curriculum_epoch * epoch
-                elif args.progress_sample:
-                    # select samples to train based on progress
-                    if args.uniform_set and not next_change_guid:
-                        # not training progress eval to find the best guid
-                        # run training on uniformly distributed dataset first
-                        # evaluate the improvement on this uniformly distributed dataset
-                        # use the largest improvement as the next guid
-                        cur_guidance = None
-                        uniform_set = True
-                        next_change_guid = True
-                        # record beginning progress prob
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 print_log=False, prev_probs=prev_probs, sel_imgs=list_img_guid,
-                                                 unif_begin=True)
-                        last_perform = eval_res[2]
-                        prev_probs = eval_res[4]
-                        logger.info(f"Running on uniform set")  
-                        # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
 
-                    else:
-                        # finish a stage of training or finish the uniform training
-                        next_change_guid = False
-                        # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_sample=True,
-                                                 progress_ma=progress_ma, prev_probs=prev_probs, sel_imgs=list_img_guid)
-                        res_progress, _, last_perform, saved_diff, prev_probs = eval_res
-                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump((saved_diff, list_img_guid), f)
-                        cnt += 1
-
-                        # find samples with largest progress
-                        list_img_guid = [item[:3] for item in res_progress]
-
-                # eval performance on ood dataset  # _ = general_eval(model, args, stats, epoch, logger=logger, wandb_comment='Change ')
                 os.makedirs(args.save, exist_ok=True)
                 model_path = os.path.join(args.save, f'prevcheckpoint.pt')
-                torch.save({'wandb_id': wandb_id, 'epoch': epoch, 'step': step, 'num_batches': num_batches, 'list_img_guid': list_img_guid, 'prev_probs': prev_probs, 'stats': stats, 'last_perform': last_perform, 'id_flyp_loss_sum': id_flyp_loss_sum,
-                            'model_state_dict': model.module.state_dict(), 'optimizer_state_dict': optimizer.state_dict(), }, model_path)
+                torch.save(
+                    {'wandb_id': wandb_id, 'epoch': epoch, 'step': step, 'num_batches': num_batches, 'stats': stats,
+                     'start_uniform': start_uniform, 'next_change_guid': next_change_guid, 'last_perform': last_perform,
+                     'id_flyp_loss_sum': id_flyp_loss_sum, 'model_state_dict': model.module.state_dict(),
+                     'optimizer_state_dict': optimizer.state_dict(), }, model_path)
                 logger.info('Saving model to' + str(model_path))
 
                 if not skip_loading:
-                    if not args.progress_sample or uniform_set:
-                        ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
-                                                  cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
-                                                  ori_proportion=ori_proportion, )
-                    else:
-                        # select training samples
-                        ft_dataloader = load_data(logger, args, clip_encoder, epoch=epoch, list_imgs=list_img_guid,)
+                    ft_dataloader = load_data(logger, args, clip_encoder, cur_guidance=cur_guidance,
+                                              cur_str_times=cur_str_times, epoch=epoch, uniform_guid=uniform_set,
+                                              ori_proportion=ori_proportion, )
 
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
@@ -945,7 +820,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logit_scale2 = logit_scale2[0]
             ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
 
-            img_id_loss = list(zip(ft_imgid.detach().cpu().numpy(), ft_clip_loss_peritem.detach().cpu().numpy()))
+            # img_id_loss = list(zip(ft_imgid.detach().cpu().numpy(), ft_clip_loss_peritem.detach().cpu().numpy()))
             # list_loss_pairs.extend(img_id_loss)
 
             ft_clip_loss = torch.mean(ft_clip_loss_peritem)
@@ -975,18 +850,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 logger.info(f"Train Epoch: {epoch} [{percent_complete:.0f}% {i}/{num_batches}]\t"
                             f"ID FLYP Loss: {ft_clip_loss.item():.4f}")
 
-            if args.uniform_set and total_iter - start_uniform == 1:
+            if args.uniform_set and step - start_uniform == 1:
                 if args.progress_guid:
                     # start with guid found on uniformly distributed dataset
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
-                    last_perform = eval_res[
-                        2]  # saved_diff = eval_res[-1]  # if next_change_guid:  #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:  #         pickle.dump(saved_diff, f)  # else:  #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:  #         pickle.dump(saved_diff, f)  # save_cnt += 1
-
-            total_iter += 1
+                    last_perform = eval_res[2]
 
         # model evluation at the end iteration of current epoch
-        if (step+1) % num_batches == 0:
+        if (step + 1) % num_batches == 0:
             id_flyp_loss_avg = id_flyp_loss_sum / num_batches
 
             #############################################
@@ -1001,7 +873,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             # Evaluate
             logger.info(f"Formal evaluation ...")
             stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
-                                log_dir=log_dir)
+                                 log_dir=log_dir)
 
             #############################################
             # Save the prediction score for each image and prompt for confusion matrix
