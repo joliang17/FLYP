@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=v81
 #SBATCH --account=tianyi-prj-cmsc
-#SBATCH --time=48:00:00
-#SBATCH --gpus=a100:2
+#SBATCH --time=16:00:00
+#SBATCH --gpus=h100:1
 #SBATCH --partition=gpu
 #SBATCH --mem-per-cpu=10000
 #SBATCH --ntasks=6
