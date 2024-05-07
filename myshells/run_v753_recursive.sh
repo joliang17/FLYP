@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=v702
-#SBATCH --output=v702.out.%j
-#SBATCH --error=v702.out.%j
+#SBATCH --job-name=v753
+#SBATCH --output=v753.out.%j
+#SBATCH --error=v753.out.%j
 #SBATCH --time=48:00:00
 #SBATCH --account=cml-zhou
 #SBATCH --partition=cml-zhou
@@ -27,5 +27,5 @@ SAVED_FOLDER="../data/metadata/clip_progress_difficult_2022_2_onlyguid_expr/"
 # python datacreation_scripts/iwildcam.py --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum --gene_constr='../data/metadata/used_imgid/used_imgid_v2.pkl'
 
 # while train with guid != 100, merge it with all other guid = 100 data
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=300 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv" --csv-img-key filepath --csv-caption-key title --exp_name="flyp_loss_v702" --curriculum --curriculum_epoch=15 --merge_ori --scheduler=default --workers=4 --slurm_job_id=$SLURM_JOB_ID
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=300 --model=ViT-B/16 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save=./checkpoints/ --data-location="../data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv" --csv-img-key filepath --csv-caption-key title --exp_name="flyp_loss_v753" --curriculum --merge_ori --scheduler=default --workers=4 --slurm_job_id=$SLURM_JOB_ID
 

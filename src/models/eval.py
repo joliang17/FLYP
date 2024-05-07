@@ -123,6 +123,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         top1, correct, n = 0., 0., 0.
         dict_class = dict()
         dict_guidance = dict()
+        # for i, data in tqdm(batched_data, total=len(batched_data)):
         for i, data in batched_data:
             # pdb.set_trace()
             data = maybe_dictionarize(data, progress_guid=progress_guid)
@@ -232,17 +233,17 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
             metrics = {}
 
     if progress_guid:
-        dict_guidance_f1 = dict()
-        for guid_i in dict_labels.keys():
-            cur_str_labels = dict_labels[guid_i]
-            cur_str_preds = dict_preds[guid_i]
-            # pdb.set_trace()
-            cur_str_labels = torch.cat(cur_str_labels)
-            cur_str_preds = torch.cat(cur_str_preds)
-            cur_str_preds = torch.squeeze(cur_str_preds)
-            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
-            dict_guidance_f1[guid_i] = f1_cur_str.item()
-        metrics['guidance_f1'] = dict_guidance_f1
+        # dict_guidance_f1 = dict()
+        # for guid_i in dict_labels.keys():
+        #     cur_str_labels = dict_labels[guid_i]
+        #     cur_str_preds = dict_preds[guid_i]
+        #     # pdb.set_trace()
+        #     cur_str_labels = torch.cat(cur_str_labels)
+        #     cur_str_preds = torch.cat(cur_str_preds)
+        #     cur_str_preds = torch.squeeze(cur_str_preds)
+        #     f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
+        #     dict_guidance_f1[guid_i] = f1_cur_str.item()
+        # metrics['guidance_f1'] = dict_guidance_f1
 
         dict_guid_prob = dict()
         for img_id, guid_prob in dict_img_guid.items():
@@ -394,6 +395,8 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
         process_train_stat(results, train_stats, logger)
 
+        if 'dict_img_guid' in results:
+            train_stats['dict_img_guid'] = results['dict_img_guid']
         return info
 
     else:
@@ -419,8 +422,5 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
                     train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
             process_train_stat(results, train_stats, logger, dataset_name)
-
-            # if 'dict_img_guid' in results:
-            #     train_stats['dict_img_guid'] = results['dict_img_guid']
                 
         return info
