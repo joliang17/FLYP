@@ -43,7 +43,7 @@ def logging_input(curinput='', logger=None):
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False, return_img_id=False,
-                 list_imgs=None, logger=None, merge_ori=False, subsample=False):
+                 list_imgs=None, logger=None, merge_ori=False, subsample=False, return_train_cnt=False):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
 
@@ -92,10 +92,13 @@ class CsvDataset(Dataset):
         if list_imgs is not None:
             # unenhanced data
             df_unaug = df[df['img_id'] < 0]
-            df_aug =  df[df['img_id'] >= 0]
+            df_aug = df[df['img_id'] >= 0]
             df_aug = df_aug[df_aug.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
             df = pd.concat([df_unaug, df_aug])
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
+
+        if 'imagenet' in input_filename:
+            df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()

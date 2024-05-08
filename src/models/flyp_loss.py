@@ -627,9 +627,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
         logger.info(f"Num batches is {num_batches}")
 
-    if args.train_dataset == 'ImageNet':
-        num_batches = num_batches // 5
-
     # load scheduler
     scheduler = define_scheduler(args, optimizer, num_batches)
 
