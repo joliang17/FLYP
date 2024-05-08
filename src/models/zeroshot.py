@@ -5,7 +5,7 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 
-import clip.clip as clip
+import self_clip.clip as clip
 
 import src.templates as templates
 import src.datasets as datasets

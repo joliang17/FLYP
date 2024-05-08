@@ -1,7 +1,7 @@
 import torch
 import copy
 
-import clip.clip as clip
+import self_clip.clip as clip
 
 from src.models import utils
 import open_clip

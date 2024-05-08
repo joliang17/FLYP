@@ -6,8 +6,8 @@ from tqdm import trange, tqdm
 
 import torch
 import pandas as pd
-import clip.clip as clip
-from clip.loss import ClipLoss
+import self_clip.clip as clip
+from self_clip.loss import ClipLoss
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from typing import List
