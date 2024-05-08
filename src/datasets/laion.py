@@ -92,10 +92,13 @@ class CsvDataset(Dataset):
         if list_imgs is not None:
             # unenhanced data
             df_unaug = df[df['img_id'] < 0]
-            df_aug =  df[df['img_id'] >= 0]
+            df_aug = df[df['img_id'] >= 0]
             df_aug = df_aug[df_aug.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
             df = pd.concat([df_unaug, df_aug])
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
+
+        if 'imagenet' in input_filename and 'train' in input_filename:
+            df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()

@@ -692,9 +692,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 num_batches = num_batch_ori
         logger.info(f"Num batches is {num_batches}")
 
-    if args.train_dataset == 'ImageNet':
-        num_batches = num_batches // 5
-
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
     elif args.scheduler in ('default_slower',):
