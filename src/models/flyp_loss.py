@@ -5,8 +5,8 @@ from tqdm import trange, tqdm
 
 import torch
 import pandas as pd
-import self_clip.clip as clip
-from self_clip.loss import ClipLoss
+import clip.clip as clip
+from clip.loss import ClipLoss
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from typing import List
@@ -128,7 +128,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
                              datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
-                             ori_proportion=ori_proportion, uniform_guid=uniform_guid, 
+                             ori_proportion=ori_proportion, uniform_guid=uniform_guid,
                              logger=logger)
     assert len(img_text_data), 'At least one train or eval dataset must be specified.'
 
@@ -222,10 +222,16 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
     if print_log:
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
+
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
     epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-    epoch_stats = {f"{wandb_comment}{key}" if 'IWildCam' in key else key: values for key, values in epoch_stats.items()}
+    if args.train_dataset == 'ImageNet':
+        epoch_stats = {f"{wandb_comment}{key}" if 'Accuracy' in key else key: values for key, values in
+                       epoch_stats.items()}
+    else:
+        epoch_stats = {f"{wandb_comment}{key}" if 'IWildCam' in key else key: values for key, values in
+                       epoch_stats.items()}
 
     if log_dir is not None:
         stats.append(epoch_stats)
@@ -443,7 +449,8 @@ def init_guidance_setting(args, logger, ):
 
         len_data = len(df_ori)
         list_guidance = list(set(df_ori['guidance'].values.tolist()))
-        list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
+        # list_guidance = sorted(list_guidance, reverse=False)  # 0 --> 100
+        list_guidance = sorted(list_guidance, reverse=True)  # 0 --> 100
         if args.curriculum_epoch is None:
             # start from guidance = 0
             cur_guidance_id = 0
@@ -620,6 +627,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             num_batches = int(len_data / args.batch_size) if len_data is not None else num_batches * len(list_guidance)
         logger.info(f"Num batches is {num_batches}")
 
+    if args.train_dataset == 'ImageNet':
+        num_batches = num_batches // 5
+
     # load scheduler
     scheduler = define_scheduler(args, optimizer, num_batches)
 
@@ -627,6 +637,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     # if train from previous checkpoint:
     #       if next_change_guid: load uniform dataset for train, eval the progress at +1 step
     #       else: load guidance data
+
+    if args.train_dataset == 'ImageNet':
+        stats = general_eval(model, args, [], 0, logger=logger, print_log=True, print_class=True, log_dir=log_dir)
+
     if args.progress_guid and args.uniform_set:
         if not load_ckpt:
             start_uniform = start_step
@@ -733,13 +747,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
 
-                        # find the largest guidance based on progress
-                        eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                                                 progress_ma=progress_ma)
-                        res_progress, _, last_perform, saved_diff, _ = eval_res
-                        with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                            pickle.dump(saved_diff, f)
-                        cnt += 1
+                        # find the largest guidance based on progress  # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,  #                          progress_ma=progress_ma)  # res_progress, _, last_perform, saved_diff, _ = eval_res  # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:  #     pickle.dump(saved_diff, f)  # cnt += 1
 
                     # cur_guidance = 100  # cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
@@ -814,7 +822,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_image, ft_text, ft_imgid = ft_batch
 
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
-
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
             if len(logit_scale2.shape) >= 1:
                 logit_scale2 = logit_scale2[0]
