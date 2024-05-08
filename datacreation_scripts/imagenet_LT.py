@@ -285,7 +285,10 @@ def main():
     if not args.test:
         df_train_ori = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/train.csv')
     else:
+        df_train = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/train.csv')
         df_train_ori = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/test.csv')
+        train_class_cnt = df_train.groupby('label').count()['filepath'].reset_index()
+        train_class_cnt = train_class_cnt.rename(columns={'filepath': 'train_cnt'})
 
     # df_train_ori.rename({'filepath': 'filename', 'label': 'y'}, axis='columns', inplace=True)
     df_train_ori['strength'] = 0
@@ -391,6 +394,7 @@ def main():
         df_final = merge_with_prompt(df, df_label_temp, merge_type='test')
         # df_final = df_final[df_final['guidance'] >= 50]
         print(f'Data for training: {len(df_final)}')
+        df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         df_final.to_csv(os.path.join(args.save_folder, f'test.csv'), sep='\t', index=False, header=True)
 
     return 
@@ -402,7 +406,7 @@ if __name__ == "__main__":
     parser.add_argument('--test', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
     parser.add_argument('--save_folder', default='../data/imagenet/metadata/baseline/')
-    parser.add_argument('--input_folder', default='../data/imagenet/train_new')
+    parser.add_argument('--input_folder', default='/fs/nexus-projects/wilddiffusion/gene_diffcls/data/imagenet/train_new')
     parser.add_argument('--data_folder', default='/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls')
     args = parser.parse_args()
     # args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'

@@ -36,11 +36,14 @@ def get_zeroshot_classifier(args, clip_model):
         classes = dataset.classnames
         
     else:
-
-        dataset = dataset_class(None,
-                                location=args.data_location,
-                                batch_size=args.batch_size)
-        classes = dataset.classnames
+        if args.train_dataset == 'ImageNet':
+            from src.models.imagenetlt_classes import CLASSES
+            classes = CLASSES
+        else:
+            dataset = dataset_class(None,
+                                    location=args.data_location,
+                                    batch_size=args.batch_size)
+            classes = dataset.classnames
 
     device = args.device
     clip_model.eval()

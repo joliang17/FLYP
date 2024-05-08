@@ -55,7 +55,8 @@ class ImageFolderWithPaths(datasets.ImageFolder):
 
 
 def maybe_dictionarize(batch,
-                       progress_guid=False,):
+                       progress_guid=False,
+                       train_cnt=False):
     if isinstance(batch, dict):
         return batch
 
@@ -67,6 +68,9 @@ def maybe_dictionarize(batch,
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3]}
     elif len(batch) == 5:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],}
+    elif train_cnt:
+        batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],
+                 'guidance': batch[5], 'seed': batch[6], 'img_id': batch[-2], 'train_cnt': batch[-1]}
     elif progress_guid:
         batch = {'images': batch[0], 'text': batch[1], 'labels': batch[2], 'image_paths': batch[3], 'title': batch[4],
                  'guidance': batch[5], 'seed': batch[6], 'img_id': batch[-1]}

@@ -272,8 +272,8 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     return metrics
 
 
-
 def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head, progress_guid=False, logger=None):
+    # for imgnet longtail dataset, only calculate for top-1 acc
 
     model = image_classifier
     input_key = 'images'
@@ -281,10 +281,10 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
 
     model.eval()
     classification_head.eval()
-    
+
     # run on given test set
     dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                    return_guidance=True, return_img_id=True, ).dataloader
+                                    return_guidance=True, return_img_id=True, return_train_cnt=True).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -304,10 +304,12 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
         # for i, data in tqdm(batched_data, total=len(batched_data)):
         for i, data in batched_data:
             # pdb.set_trace()
-            data = maybe_dictionarize(data, progress_guid=progress_guid)
+            data = maybe_dictionarize(data, progress_guid=progress_guid, train_cnt=True)
 
             x = data[input_key].to(device)
             y = data['labels'].to(device)
+            train_cnt = data['train_cnt'].to(device)
+
             if 'img_id' in data:
                 img_ids = data['img_id']
             else:
@@ -349,8 +351,9 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
                     cur_pred = pred[sap_ids]
                     cur_correct = (cur_pred == cls_i).sum().item()
                     cur_num = len(sap_ids[0])
+                    cur_train_cnt = train_cnt[sap_ids][0].item()
                     if cls_i not in dict_class:
-                        dict_class[cls_i] = [0, 0]
+                        dict_class[cls_i] = [0, 0, cur_train_cnt]
 
                     dict_class[cls_i][0] += cur_correct
                     dict_class[cls_i][1] += cur_num
@@ -450,71 +453,40 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
     return metrics
 
 
-def eval_single_batch_dataset(image_classifier, dataset, args, classification_head, data):
+def shot_imgnet_acc(dict_class, many_shot_thr=100, low_shot_thr=20, acc_per_cls=False):
+    many_shot = []
+    median_shot = []
+    low_shot = []
+    cls_shot = []
+    overall_cnt = [0, 0]
+    for cls_id, pair in dict_class.items():
+        cls_correct = pair[0]
+        cls_cnt = pair[1]
+        train_cls_cnt = pair[2]
+        overall_cnt[0] += cls_correct
+        overall_cnt[1] += cls_cnt
 
-    model = image_classifier
-    input_key = 'images'
-
-    model.eval()
-    classification_head.eval()
-
-    device = args.device
-
-    if hasattr(dataset, 'post_loop_metrics'):
-        # keep track of labels, predictions and metadata
-        all_labels, all_preds, all_metadata = [], [], []
-
-    with torch.no_grad():
-        top1, correct, n, cnt_loss = 0., 0., 0., 0.
-
-        data = maybe_dictionarize(data)
-        x = data[input_key].to(device)
-        y = data['labels'].to(device)
-
-        assert x.shape[0] == 2 * args.k, 'val mismatch size'
-
-        if 'image_paths' in data:
-            image_paths = data['image_paths']
-
-        logits = utils.get_logits(x, model, classification_head)
-
-        projection_fn = getattr(dataset, 'project_logits', None)
-        if projection_fn is not None:
-            logits = projection_fn(logits, device)
-
-        if hasattr(dataset, 'project_labels'):
-            y = dataset.project_labels(y, device)
-
-        cnt_loss = F.cross_entropy(logits, y)
-        pred = logits.argmax(dim=1, keepdim=True).to(device)
-        if hasattr(dataset, 'accuracy'):
-            acc1, num_total = dataset.accuracy(logits, y, image_paths, args)
-            correct += acc1
-            n += num_total
+        cls_acc = cls_correct / cls_cnt
+        cls_shot.append(cls_acc)
+        if train_cls_cnt > many_shot_thr:
+            many_shot.append((cls_acc))
+        elif train_cls_cnt < low_shot_thr:
+            low_shot.append((cls_acc))
         else:
-            correct += pred.eq(y.view_as(pred)).sum().item()
-            n += y.size(0)
+            median_shot.append((cls_acc))  
 
-        if hasattr(dataset, 'post_loop_metrics'):
-            all_labels.append(y.cpu().clone().detach())
-            all_preds.append(logits.cpu().clone().detach())
-            metadata = data['metadata'] if 'metadata' in data else image_paths
-            all_metadata.extend(metadata)
-
-        top1 = correct / n
-
-        if hasattr(dataset, 'post_loop_metrics'):
-            all_labels = torch.cat(all_labels)
-            all_preds = torch.cat(all_preds)
-            metrics = dataset.post_loop_metrics(all_labels, all_preds, all_metadata, args)
-            if 'acc' in metrics:
-                metrics['top1'] = metrics['acc']
-        else:
-            metrics = {}
-    if 'top1' not in metrics:
-        metrics['top1'] = top1
-
-    return metrics['top1'], cnt_loss.item()
+    if len(many_shot) == 0:
+        many_shot.append(0)
+    if len(median_shot) == 0:
+        median_shot.append(0)
+    if len(low_shot) == 0:
+        low_shot.append(0)
+    
+    overall_acc = overall_cnt[0]/overall_cnt[1]
+    if acc_per_cls:
+        return overall_acc, np.mean(many_shot), np.mean(median_shot), np.mean(low_shot), cls_shot
+    else:
+        return overall_acc, np.mean(many_shot), np.mean(median_shot), np.mean(low_shot)
 
 
 def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False,
@@ -522,6 +494,27 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
     if args.eval_datasets is None:
         return
     info = vars(args)
+
+    if args.train_dataset == 'ImageNet':
+
+        dataset = None
+        results = eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head)
+
+        if 'top1' in results:
+            logging_input(f"Top-1 accuracy: {results['top1']:.4f}", logger)
+            train_stats["Top1 Accuracy"] = round(results['top1'], 4)
+
+        if 'class_top1' in results:
+            pdb.set_trace()
+            overall_acc, many_acc, median_acc, few_acc, cls_shot = shot_imgnet_acc(results['class_top1'], acc_per_cls=True)
+            train_stats["Overall Accuracy"] = round(overall_acc, 4)
+            train_stats["Many Accuracy"] = round(many_acc, 4)
+            train_stats["Median Accuracy"] = round(median_acc, 4)
+            train_stats["Few Accuracy"] = round(few_acc, 4)
+
+        process_train_stat(results, train_stats, logger)
+
+        return info
 
     if progress_sample:
         # Evaluate the best guidance on training dataset for each image

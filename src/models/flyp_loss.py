@@ -219,10 +219,15 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     epoch_stats['Avg OOD Acc'] = round(ood_acc, 4)
     if print_log:
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
+
+    pdb.set_trace()
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
     epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
-    epoch_stats = {f"{wandb_comment}{key}" if 'IWildCam' in key else key: values for key, values in epoch_stats.items()}
+    if args.train_dataset == 'ImageNet':
+        epoch_stats = {f"{wandb_comment}{key}" if 'Accuracy' in key else key: values for key, values in epoch_stats.items()}
+    else:
+        epoch_stats = {f"{wandb_comment}{key}" if 'IWildCam' in key else key: values for key, values in epoch_stats.items()}
 
     if log_dir is not None:
         stats.append(epoch_stats)
@@ -611,14 +616,14 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     # load finetuned model here
     if args.cont_finetune:
         model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
-                                  f'checkpoint_17.pt')
+                                  f'checkpoint_15.pt')
 
         # model_path = os.path.join("checkpoints/flyp_loss_v7152/_BS300_WD0.2_LR1e-05_run1",
         #                           f'checkpoint_1.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        # model.load_state_dict(checkpoint)  
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)  
+        # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -701,6 +706,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     next_change_guid = False
     pre_guidance = None
     start_uniform = 0
+
+    if args.train_dataset == 'ImageNet':
+        stats = general_eval(model, args, [], 0, logger=logger, print_log=True, print_class=True,
+                             log_dir=log_dir)
 
     if args.progress_sample:
         if not load_ckpt:
@@ -930,7 +939,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             ft_image, ft_text, ft_imgid = ft_batch
 
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
-
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
             if len(logit_scale2.shape) >= 1:
                 logit_scale2 = logit_scale2[0]
