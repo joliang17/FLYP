@@ -123,6 +123,7 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
         top1, correct, n = 0., 0., 0.
         dict_class = dict()
         dict_guidance = dict()
+        # for i, data in tqdm(batched_data, total=len(batched_data)):
         for i, data in batched_data:
             # pdb.set_trace()
             data = maybe_dictionarize(data, progress_guid=progress_guid)
@@ -271,71 +272,221 @@ def eval_single_dataset(image_classifier, dataset, args, classification_head, pr
     return metrics
 
 
-def eval_single_batch_dataset(image_classifier, dataset, args, classification_head, data):
+def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head, progress_guid=False, logger=None):
+    # for imgnet longtail dataset, only calculate for top-1 acc
 
     model = image_classifier
     input_key = 'images'
+    image_enc = None
 
     model.eval()
     classification_head.eval()
 
+    # run on given test set
+    dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
+                                 return_guidance=True, return_img_id=True, return_train_cnt=True).dataloader
+
+    batched_data = enumerate(dataloader)
     device = args.device
 
     if hasattr(dataset, 'post_loop_metrics'):
         # keep track of labels, predictions and metadata
         all_labels, all_preds, all_metadata = [], [], []
 
+    dict_labels = dict()
+    dict_preds = dict()
+    dict_img_guid = dict()
+
     with torch.no_grad():
-        top1, correct, n, cnt_loss = 0., 0., 0., 0.
+        top1, correct, n = 0., 0., 0.
+        dict_class = dict()
+        dict_guidance = dict()
+        # for i, data in tqdm(batched_data, total=len(batched_data)):
+        for i, data in batched_data:
+            # pdb.set_trace()
+            data = maybe_dictionarize(data, progress_guid=progress_guid, train_cnt=True)
 
-        data = maybe_dictionarize(data)
-        x = data[input_key].to(device)
-        y = data['labels'].to(device)
+            x = data[input_key].to(device)
+            y = data['labels'].to(device)
+            train_cnt = data['train_cnt'].to(device)
 
-        assert x.shape[0] == 2 * args.k, 'val mismatch size'
+            if 'img_id' in data:
+                img_ids = data['img_id']
+            else:
+                img_ids = torch.arange(i * args.batch_size, i * args.batch_size + x.shape[0])
 
-        if 'image_paths' in data:
-            image_paths = data['image_paths']
+            if 'guidance' in data:
+                guidance = data['guidance']
+            else:
+                guidance = torch.ones_like(y)
+                guidance = guidance * 100
 
-        logits = utils.get_logits(x, model, classification_head)
+            if 'image_paths' in data:
+                image_paths = data['image_paths']
 
-        projection_fn = getattr(dataset, 'project_logits', None)
-        if projection_fn is not None:
-            logits = projection_fn(logits, device)
+            img_emb, logits = utils.get_logits(x, model, classification_head)
 
-        if hasattr(dataset, 'project_labels'):
-            y = dataset.project_labels(y, device)
+            projection_fn = getattr(dataset, 'project_logits', None)
+            if projection_fn is not None:
+                logits = projection_fn(logits, device)
 
-        cnt_loss = F.cross_entropy(logits, y)
-        pred = logits.argmax(dim=1, keepdim=True).to(device)
-        if hasattr(dataset, 'accuracy'):
-            acc1, num_total = dataset.accuracy(logits, y, image_paths, args)
-            correct += acc1
-            n += num_total
-        else:
-            correct += pred.eq(y.view_as(pred)).sum().item()
-            n += y.size(0)
+            if hasattr(dataset, 'project_labels'):
+                y = dataset.project_labels(y, device)
 
-        if hasattr(dataset, 'post_loop_metrics'):
-            all_labels.append(y.cpu().clone().detach())
-            all_preds.append(logits.cpu().clone().detach())
-            metadata = data['metadata'] if 'metadata' in data else image_paths
-            all_metadata.extend(metadata)
+            pred = logits.argmax(dim=1, keepdim=True).to(device)
+            all_prob = F.softmax(logits, dim=-1)
+
+            if hasattr(dataset, 'accuracy'):
+                acc1, num_total = dataset.accuracy(logits, y, image_paths, args)
+                correct += acc1
+                n += num_total
+            else:
+                correct += pred.eq(y.view_as(pred)).sum().item()
+                n += y.size(0)
+
+                classes = torch.unique(y)
+                for cls_i in classes:
+                    cls_i = cls_i.item()
+                    sap_ids = (y == cls_i).nonzero(as_tuple=True)
+                    cur_pred = pred[sap_ids]
+                    cur_correct = (cur_pred == cls_i).sum().item()
+                    cur_num = len(sap_ids[0])
+                    cur_train_cnt = train_cnt[sap_ids][0].item()
+                    if cls_i not in dict_class:
+                        dict_class[cls_i] = [0, 0, cur_train_cnt]
+
+                    dict_class[cls_i][0] += cur_correct
+                    dict_class[cls_i][1] += cur_num
+
+                if progress_guid:
+                    # calculate accuracy / F1 for each guid
+                    guidances = torch.unique(guidance)
+                    for guid_i in guidances:
+                        guid_i = guid_i.item()
+                        sap_ids = (guidance == guid_i).nonzero(as_tuple=True)
+                        cur_pred = pred[sap_ids]
+                        cur_y = y[sap_ids]
+                        # cur_guid_prob = all_prob[sap_ids]
+                        # cur_probs = torch.gather(cur_guid_prob, 1, cur_y.reshape(-1, 1))
+
+                        cur_correct = cur_pred.eq(cur_y.view_as(cur_pred)).sum().item()
+                        cur_num = len(sap_ids[0])
+                        if guid_i not in dict_guidance:
+                            dict_guidance[guid_i] = [0, 0]
+
+                        dict_guidance[guid_i][0] += cur_correct
+                        dict_guidance[guid_i][1] += cur_num
+
+                        if guid_i not in dict_labels:
+                            dict_labels[guid_i] = []
+                            dict_preds[guid_i] = []
+                        dict_labels[guid_i].append(cur_y.cpu().clone().detach())
+                        dict_preds[guid_i].append(cur_pred.cpu().clone().detach())
+
+                for i, img_id_t in enumerate(img_ids):
+                    img_id = img_id_t.item()
+                    cur_y = y[i].item()
+                    cur_prob = all_prob[i, cur_y].item()
+                    cur_probs = all_prob[i].detach().cpu().numpy()
+                    cur_img_emb = img_emb[i].detach().cpu().numpy()
+                    cur_guid = guidance[i].item()
+                    if img_id not in dict_img_guid:
+                        dict_img_guid[img_id] = []
+                    dict_img_guid[img_id].append([cur_y, cur_guid, cur_prob, cur_probs, cur_img_emb])
+
+            if hasattr(dataset, 'post_loop_metrics'):
+                all_labels.append(y.cpu().clone().detach())
+                all_preds.append(logits.cpu().clone().detach())
+                metadata = data['metadata'] if 'metadata' in data else image_paths
+                all_metadata.extend(metadata)
 
         top1 = correct / n
-
+        # pdb.set_trace()
         if hasattr(dataset, 'post_loop_metrics'):
             all_labels = torch.cat(all_labels)
             all_preds = torch.cat(all_preds)
+
             metrics = dataset.post_loop_metrics(all_labels, all_preds, all_metadata, args)
+
             if 'acc' in metrics:
                 metrics['top1'] = metrics['acc']
         else:
             metrics = {}
+
+    if progress_guid:
+        dict_guidance_f1 = dict()
+        for guid_i in dict_labels.keys():
+            cur_str_labels = dict_labels[guid_i]
+            cur_str_preds = dict_preds[guid_i]
+            # pdb.set_trace()
+            cur_str_labels = torch.cat(cur_str_labels)
+            cur_str_preds = torch.cat(cur_str_preds)
+            cur_str_preds = torch.squeeze(cur_str_preds)
+            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
+            dict_guidance_f1[guid_i] = f1_cur_str.item()
+        metrics['guidance_f1'] = dict_guidance_f1
+
+        dict_guid_prob = dict()
+        for img_id, guid_prob in dict_img_guid.items():
+            for cur_guid_res in guid_prob:
+                guid = cur_guid_res[1]
+                prob = cur_guid_res[2]
+                img_emb = cur_guid_res[-1]
+                if guid not in dict_guid_prob:
+                    dict_guid_prob[guid] = []
+                dict_guid_prob[guid].append([prob, img_id, img_emb])
+
+        metrics['progress_res'] = dict_guid_prob
+
     if 'top1' not in metrics:
         metrics['top1'] = top1
 
-    return metrics['top1'], cnt_loss.item()
+    if len(dict_class) > 0:
+        metrics['class_top1'] = dict_class
+
+    if len(dict_guidance) > 0:
+        metrics['guidance_top1'] = dict_guidance
+
+    if len(dict_img_guid) > 0:
+        metrics['dict_img_guid'] = dict_img_guid
+
+    return metrics
+
+
+def shot_imgnet_acc(dict_class, many_shot_thr=100, low_shot_thr=20, acc_per_cls=False):
+    many_shot = []
+    median_shot = []
+    low_shot = []
+    cls_shot = []
+    overall_cnt = [0, 0]
+    for cls_id, pair in dict_class.items():
+        cls_correct = pair[0]
+        cls_cnt = pair[1]
+        train_cls_cnt = pair[2]
+        overall_cnt[0] += cls_correct
+        overall_cnt[1] += cls_cnt
+
+        cls_acc = cls_correct / cls_cnt
+        cls_shot.append(cls_acc)
+        if train_cls_cnt > many_shot_thr:
+            many_shot.append((cls_acc))
+        elif train_cls_cnt < low_shot_thr:
+            low_shot.append((cls_acc))
+        else:
+            median_shot.append((cls_acc))
+
+    if len(many_shot) == 0:
+        many_shot.append(0)
+    if len(median_shot) == 0:
+        median_shot.append(0)
+    if len(low_shot) == 0:
+        low_shot.append(0)
+
+    overall_acc = overall_cnt[0] / overall_cnt[1]
+    if acc_per_cls:
+        return overall_acc, np.mean(many_shot), np.mean(median_shot), np.mean(low_shot), cls_shot
+    else:
+        return overall_acc, np.mean(many_shot), np.mean(median_shot), np.mean(low_shot)
 
 
 def evaluate(image_classifier, args, classification_head, train_stats={}, logger=None, progress_guid=False,
@@ -343,6 +494,27 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
     if args.eval_datasets is None:
         return
     info = vars(args)
+
+    if args.train_dataset == 'ImageNet':
+
+        dataset = None
+        results = eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head)
+
+        if 'top1' in results:
+            logging_input(f"Top-1 accuracy: {results['top1']:.4f}", logger)
+            train_stats["Top1 Accuracy"] = round(results['top1'], 4)
+
+        if 'class_top1' in results:
+            overall_acc, many_acc, median_acc, few_acc, cls_shot = shot_imgnet_acc(results['class_top1'],
+                                                                                   acc_per_cls=True)
+            train_stats["Overall Accuracy"] = round(overall_acc, 4)
+            train_stats["Many Accuracy"] = round(many_acc, 4)
+            train_stats["Median Accuracy"] = round(median_acc, 4)
+            train_stats["Few Accuracy"] = round(few_acc, 4)
+
+        process_train_stat(results, train_stats, logger)
+
+        return info
 
     if progress_sample:
         # Evaluate the best guidance on training dataset for each image
@@ -391,6 +563,8 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
         process_train_stat(results, train_stats, logger)
 
+        if 'dict_img_guid' in results:
+            train_stats['dict_img_guid'] = results['dict_img_guid']
         return info
 
     else:
@@ -416,8 +590,5 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
                     train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
 
             process_train_stat(results, train_stats, logger, dataset_name)
-
-            # if 'dict_img_guid' in results:
-            #     train_stats['dict_img_guid'] = results['dict_img_guid']
                 
         return info

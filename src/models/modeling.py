@@ -1,10 +1,11 @@
 import torch
 import copy
 
-import self_clip.clip as clip
+import clip.clip as clip
 
 from src.models import utils
 import open_clip
+import pdb
 
 
 class CLIPEncoder(torch.nn.Module):

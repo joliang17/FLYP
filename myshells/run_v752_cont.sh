@@ -12,7 +12,6 @@
 
 
 
-
 # checking gpu status
 nvidia-smi
 

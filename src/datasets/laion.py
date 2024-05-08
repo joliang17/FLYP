@@ -43,12 +43,9 @@ def logging_input(curinput='', logger=None):
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", label_key=None, guidance=None,
                  datalimit=-1, ori_proportion=None, uniform_guid=False, return_guidance=False, return_img_id=False,
-                 list_imgs=None, logger=None, merge_ori=False, subsample=False):
+                 list_imgs=None, logger=None, merge_ori=False, subsample=False, return_train_cnt=False):
         # logging_input(f'Loading csv data from {input_filename}.', logger)
         df = pd.read_csv(input_filename, sep=sep)
-        df_pos = df[df['label'] != 0]
-        df_neg = df[df['label'] == 0]
-        len_neg = len(df_neg)
 
         ##########################
         # mixture from original data * image guidance
@@ -73,12 +70,12 @@ class CsvDataset(Dataset):
                 df = df.sample(n=datalimit, replace=False, ignore_index=True)
                 logging_input(f'sampling guid={guidance} with {len(df)} samples.', logger)
 
-            if merge_ori:
-                if subsample:
-                    df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
+            # if merge_ori:
+            if subsample:
+                df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
 
-                df = pd.concat([df, df_unenhanced])
-                logging_input(f'merged with unenhanced data.', logger)
+            df = pd.concat([df, df_unenhanced])
+            logging_input(f'merged with unenhanced data.', logger)
 
         ##########################
         # mixture from original data * image guidance
@@ -95,10 +92,13 @@ class CsvDataset(Dataset):
         if list_imgs is not None:
             # unenhanced data
             df_unaug = df[df['img_id'] < 0]
-            df_aug =  df[df['img_id'] >= 0]
+            df_aug = df[df['img_id'] >= 0]
             df_aug = df_aug[df_aug.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
             df = pd.concat([df_unaug, df_aug])
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
+
+        if 'imagenet' in input_filename and 'train' in input_filename:
+            df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -137,6 +137,13 @@ class CsvDataset(Dataset):
             self.img_path = df["filepath"].tolist()
             self.prompt = df["title"].tolist()
         self.transforms = transforms
+
+        self.return_train_cnt = return_train_cnt
+        if self.return_train_cnt:
+            if 'train_cnt' in df.columns:
+                self.train_cnt = df['train_cnt'].tolist()
+            else:
+                self.train_cnt = [50] * len(self.captions)
 
         # self.classes = max(self.labels) + 1
         logging_input(f'Loading data with length {len(self.images)}.', logger)
@@ -186,6 +193,10 @@ class CsvDataset(Dataset):
         if self.return_img_id:
             img_id = self.img_id[idx]
             return_label.append(img_id)
+
+        if self.return_train_cnt:
+            train_cnt = self.train_cnt[idx]
+            return_label.append(train_cnt)
 
         return return_label
 
@@ -493,8 +504,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
-                    return_guidance=False, return_img_id=False, datalimit=-1, logger=None,
-                    list_imgs=None, merge_ori=False, subsample=False):
+                    return_guidance=False, return_img_id=False, datalimit=-1, logger=None, list_imgs=None,
+                    merge_ori=False, subsample=False, return_train_cnt=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
     assert input_filename
@@ -512,7 +523,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
                          guidance=guidance, datalimit=datalimit, uniform_guid=uniform_guid, list_imgs=list_imgs,
                          return_guidance=return_guidance, merge_ori=merge_ori, subsample=subsample,
-                         return_img_id=return_img_id, ori_proportion=ori_proportion, )
+                         return_img_id=return_img_id, ori_proportion=ori_proportion, return_train_cnt=return_train_cnt)
     num_samples = len(dataset)
     # sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     sampler = None
