@@ -997,7 +997,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Save the prediction score for each image and prompt for confusion matrix
         if args.debug:
             for i in range(20):
-                model_path = f'checkpoints/flyp_loss_v752_all/_BS256_WD0.2_LR1e-05_run1/checkpoint_{i}.pt'
+                model_path = f'checkpoints/flyp_loss_v752_all_3694/_BS256_WD0.2_LR1e-05_run1/checkpoint_{i}.pt'
                 logger.info(f"evaluation on {model_path} ...")
 
                 # load model
