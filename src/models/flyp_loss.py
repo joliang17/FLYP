@@ -535,14 +535,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
+        model_path = os.path.join("/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls/FLYP_v0/checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1/",
                                   f'checkpoint_15.pt')
 
         # model_path = os.path.join("checkpoints/flyp_loss_v7152/_BS300_WD0.2_LR1e-05_run1",
         #                           f'checkpoint_1.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)  # model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint)  
+        # model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
