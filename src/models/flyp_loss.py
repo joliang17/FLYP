@@ -220,7 +220,6 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
     if print_log:
         logger.info(f"Avg OOD Acc : {ood_acc:.4f}")
 
-    pdb.set_trace()
     # logger.info(f"Avg ID FLYP Loss : {id_flyp_loss_avg:.4f}")
     # epoch_stats['Avg ID FLYP Loss'] = round(id_flyp_loss_avg, 4)
     epoch_stats = {key: values for key, values in epoch_stats.items() if ' Class' not in key}
@@ -692,6 +691,9 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             else:
                 num_batches = num_batch_ori
         logger.info(f"Num batches is {num_batches}")
+
+    if args.train_dataset == 'ImageNet':
+        num_batches = num_batches // 5
 
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)

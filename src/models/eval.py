@@ -505,7 +505,6 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
             train_stats["Top1 Accuracy"] = round(results['top1'], 4)
 
         if 'class_top1' in results:
-            pdb.set_trace()
             overall_acc, many_acc, median_acc, few_acc, cls_shot = shot_imgnet_acc(results['class_top1'], acc_per_cls=True)
             train_stats["Overall Accuracy"] = round(overall_acc, 4)
             train_stats["Many Accuracy"] = round(many_acc, 4)
