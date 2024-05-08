@@ -97,7 +97,7 @@ class CsvDataset(Dataset):
             df = pd.concat([df_unaug, df_aug])
             logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
 
-        if 'imagenet' in input_filename:
+        if 'imagenet' in input_filename and 'train' in input_filename:
             df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
