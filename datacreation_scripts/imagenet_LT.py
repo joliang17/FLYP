@@ -250,7 +250,9 @@ def filter_img(clip_path: str, threshold: float):
         list_filtered = list(dict_clip_res.items())
         list_filtered = [[item[0].split('='), item[1][0], item[1][1]] for item in
                          list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
+        print(f"length before filter: {len(list_filtered)}")
         list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
+        print(f"length after filter: {len(list_filtered)}")
         for pair in list_filtered:
             cur_sp = pair[0]
             cur_cate = pair[1]
@@ -310,9 +312,9 @@ def main():
     
     if args.curriculum:
         Dict_filt = dict()
-        # clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
-        # threshold = 0.25
-        # Dict_filt, img_cnt = filter_img(clip_path, threshold)
+        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
+        threshold = 0.25
+        Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
         # if args.gene_constr != '':
         #     Dict_filt, img_cnt_1, uniq_cnt = filter_generated_img(args.gene_constr, Dict_filt)
