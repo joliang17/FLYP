@@ -391,7 +391,6 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
             if args.progress_metric != 'Prob':
                 cur_progress = value - last_perform[key]
                 if weighted_hist_prog is not None:
-                    # TODO: exponential moving average
                     cur_progress = 0.8 * cur_progress + 0.2 * weighted_hist_prog
 
                 str_progress[f"Guidance {guidance_i}"] = rnd_prog(cur_progress)  # for logging
@@ -408,7 +407,6 @@ def progress_eval(model, args, last_perform, epoch: int, logger, progress_guid=F
                 # analysis
 
                 if weighted_hist_prog is not None:
-                    # TODO: exponential moving average
                     cur_progress = 0.9 * cur_progress + 0.1 * weighted_hist_prog
 
                 # remove outliers
@@ -545,6 +543,8 @@ def init_guidance_setting(args, logger, ):
             len_ori = len(df_ori[df_ori['guidance'] == 100])
             num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
             # keep number of iteration during the entire training process the same
+            if args.train_dataset == 'ImageNet':
+                num_batch_ori = num_batch_ori // 5
             total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
 
             # estimate the number of times loading for each guid
@@ -979,14 +979,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                     eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                              print_log=False, )
                     last_perform = eval_res[2]
-                    # saved_diff = eval_res[-1]
-                    # if next_change_guid:
-                    #     with open(f"{log_dir}/progress_uniform{cnt}_{save_cnt}.pkl", 'wb') as f:
-                    #         pickle.dump(saved_diff, f)
-                    # else:
-                    #     with open(f"{log_dir}/progress_normal{cnt}_{save_cnt}.pkl", 'wb') as f:
-                    #         pickle.dump(saved_diff, f)
-                    # save_cnt += 1
 
             total_iter += 1
 

@@ -126,6 +126,8 @@ def parse_arguments():
     parser.add_argument("--guidance", type=int, default=-1, help="Number of dataloader workers per GPU.")
 
     parser.add_argument("--slurm_job_id", type=int, default=-1, help="SLURM job id.")
+
+    parser.add_argument("--ft_data_curri", type=str, default=None, help="Path to csv filewith training data", )
     ######################################
 
     parser.add_argument("--train-num-samples", type=int, default=None,

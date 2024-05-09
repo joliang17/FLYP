@@ -74,31 +74,16 @@ class CsvDataset(Dataset):
             if subsample:
                 df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
 
+            if 'imagenet' in input_filename and 'train' in input_filename:
+                df_unenhanced = df_unenhanced.sample(frac=0.2, replace=False)
+                df = df.sample(frac=0.2, replace=False)
+
             df = pd.concat([df, df_unenhanced])
             logging_input(f'merged with unenhanced data.', logger)
 
-        ##########################
-        # mixture from original data * image guidance
-        if ori_proportion is not None and guidance != 100:
-            num_df = len(df)
-            num_ori = min(len(df_ori), int(num_df / (1 - ori_proportion) * ori_proportion))
-            df_ori = df_ori.sample(n=num_ori, replace=False, ignore_index=True)
-            df = pd.concat([df, df_ori])
-            logging_input(f'Concatted data {num_df} + {num_ori} = {len(df)}.', logger)
-
-        ##########################
-        # select image with given list
-        # list_imgs: [img_id, guid]
-        if list_imgs is not None:
-            # unenhanced data
-            df_unaug = df[df['img_id'] < 0]
-            df_aug = df[df['img_id'] >= 0]
-            df_aug = df_aug[df_aug.apply(lambda x: [x['img_id'], x['guidance'], x['seed']] in list_imgs, axis=1)]
-            df = pd.concat([df_unaug, df_aug])
-            logging_input(f'Selecting {len(df)} samples for next stage training.', logger)
-
-        if 'imagenet' in input_filename and 'train' in input_filename:
-            df = df.sample(frac=0.2, replace=False)
+        elif not uniform_guid:
+            if 'imagenet' in input_filename and 'train' in input_filename:
+                df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
@@ -505,9 +490,11 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
                     return_guidance=False, return_img_id=False, include_neg=False, datalimit=-1, logger=None,
-                    list_imgs=None, merge_ori=False, subsample=False, return_train_cnt=False):
+                    list_imgs=None, merge_ori=False, subsample=False, return_train_cnt=False, progress_guid=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
+    if progress_guid:
+        input_filename = args.ft_data_curri
     assert input_filename
 
     if args.get_labeled_csv:

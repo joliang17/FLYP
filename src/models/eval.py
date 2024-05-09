@@ -284,7 +284,7 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
 
     # run on given test set
     dataloader = get_csv_dataset(args, image_classifier.module.val_preprocess, logger=logger, is_train=False,
-                                    return_guidance=True, return_img_id=True, return_train_cnt=True).dataloader
+                                    return_guidance=True, return_img_id=True, return_train_cnt=True, progress_guid=progress_guid).dataloader
 
     batched_data = enumerate(dataloader)
     device = args.device
@@ -414,18 +414,6 @@ def eval_single_dataset_imgnet(image_classifier, dataset, args, classification_h
             metrics = {}
 
     if progress_guid:
-        dict_guidance_f1 = dict()
-        for guid_i in dict_labels.keys():
-            cur_str_labels = dict_labels[guid_i]
-            cur_str_preds = dict_preds[guid_i]
-            # pdb.set_trace()
-            cur_str_labels = torch.cat(cur_str_labels)
-            cur_str_preds = torch.cat(cur_str_preds)
-            cur_str_preds = torch.squeeze(cur_str_preds)
-            f1_cur_str = multiclass_f1_score(cur_str_preds, cur_str_labels, num_classes=181, average="macro")
-            dict_guidance_f1[guid_i] = f1_cur_str.item()
-        metrics['guidance_f1'] = dict_guidance_f1
-
         dict_guid_prob = dict()
         for img_id, guid_prob in dict_img_guid.items():
             for cur_guid_res in guid_prob:
@@ -498,7 +486,7 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
     if args.train_dataset == 'ImageNet':
 
         dataset = None
-        results = eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head)
+        results = eval_single_dataset_imgnet(image_classifier, dataset, args, classification_head, progress_guid=progress_guid)
 
         if 'top1' in results:
             logging_input(f"Top-1 accuracy: {results['top1']:.4f}", logger)
@@ -510,6 +498,20 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
             train_stats["Many Accuracy"] = round(many_acc, 4)
             train_stats["Median Accuracy"] = round(median_acc, 4)
             train_stats["Few Accuracy"] = round(few_acc, 4)
+
+        if 'progress_res' in results:
+            dict_guid_prob = results['progress_res']
+            dict_guid_prob_new = {key: [[item[0] for item in values], [item[1] for item in values], [item[2] for item in values]] for key, values in dict_guid_prob.items()}
+            dict_guid_mean = {key: np.mean(values[0]) for key, values in dict_guid_prob_new.items()}
+            dict_guid_std = {key: np.std(values[0]) for key, values in dict_guid_prob_new.items()}
+
+            for key in dict_guid_mean.keys():
+                guid_mean = dict_guid_mean[key]
+                guid_std = dict_guid_std[key]
+                # logging_input(f"Guidance = {key}: mean {np.round(guid_mean, 4)}, std {np.round(guid_std, 4)}", logger)
+                train_stats[f"Guidance {key} Mean"] = guid_mean
+                train_stats[f"Guidance {key} Std"] = guid_std
+                train_stats[f"Guidance {key} Values"] = dict_guid_prob_new[key]
 
         process_train_stat(results, train_stats, logger)
 
