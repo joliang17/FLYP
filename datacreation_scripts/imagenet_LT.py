@@ -284,6 +284,8 @@ def main():
     list_result = []
     if not args.test:
         df_train_ori = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/train.csv')
+        train_class_cnt = df_train_ori.groupby('label').count()['filepath'].reset_index()
+        train_class_cnt = train_class_cnt.rename(columns={'filepath': 'train_cnt'})
     else:
         df_train = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/train.csv')
         df_train_ori = pd.read_csv(f'{args.data_folder}/data/imagenet/LT_metadata/test.csv')
@@ -306,9 +308,10 @@ def main():
     df_label_temp = pd.DataFrame(label_to_template, columns=['label', 'title'])
     
     if args.curriculum:
-        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
-        threshold = 0.25
-        Dict_filt, img_cnt = filter_img(clip_path, threshold)
+        Dict_filt = dict()
+        # clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
+        # threshold = 0.25
+        # Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
         # if args.gene_constr != '':
         #     Dict_filt, img_cnt_1, uniq_cnt = filter_generated_img(args.gene_constr, Dict_filt)
@@ -318,9 +321,16 @@ def main():
         for cur_sp_f in tqdm(img_sp_folder):
             cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
+            list_img_cate = os.listdir(cur_sp_path)
+            if len(list_img_cate) == 1:
+                # have / in name, resulting in the incorrect folder structure
+                post_fix = list_img_cate[0]
+                cur_sp_path = os.path.join(cur_sp_path, post_fix)
+                list_img_cate = os.listdir(cur_sp_path)
+                cur_sp_name += '/' + post_fix.replace('_', ' ')
+
             cur_y = openai_classnames.index(cur_sp_name)
 
-            list_img_cate = os.listdir(cur_sp_path)
             for cate in list_img_cate:
                 cur_strength = int(cate.split('_')[0].replace('Strength', ''))
                 cur_seed = int(cate.split('_')[-1].replace('seed', ''))
@@ -366,7 +376,7 @@ def main():
         print(f"selecting images with all guidance for guidance selection")
         df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
         df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
-        sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
+        sel_img = df_count[df_count['guidance'] == 7].sample(n=100, replace=False, random_state=42)[
             'img_name'].values.tolist()
         df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
         df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
@@ -381,6 +391,7 @@ def main():
         df_sel_final = merge_with_prompt(df_sel, df_label_temp, merge_type='curriculum')
         # df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
         print(f'Data for curriculum: {len(df_sel_final)}')
+        df_sel_final = pd.merge(df_sel_final, train_class_cnt, on='label', how='inner')
         df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
     if not args.test:
@@ -410,7 +421,6 @@ if __name__ == "__main__":
     parser.add_argument('--data_folder', default='/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls')
     args = parser.parse_args()
     # args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'
-
     os.makedirs(args.save_folder, exist_ok=True)
 
     main()
