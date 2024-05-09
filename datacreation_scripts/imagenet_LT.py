@@ -267,6 +267,7 @@ def filter_img(clip_path: str, threshold: float):
 def merge_with_prompt(df, df_label_temp, merge_type='train'):
     # merge prompts
     if merge_type == 'train':
+        # df_label_temp = df_label_temp.drop_duplicates(subset=['label'])
         df = pd.merge(df, df_label_temp, on='label', how='left')
     else:
         df_partial = df_label_temp.drop_duplicates(subset=['label'])
@@ -390,22 +391,25 @@ def main():
         # df = df[df['img_id'] < 0]
 
         df_sel_final = merge_with_prompt(df_sel, df_label_temp, merge_type='curriculum')
-        # df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
+        df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
         print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final = pd.merge(df_sel_final, train_class_cnt, on='label', how='inner')
+        print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
     if not args.test:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='train')
-        # df_final = df_final[df_final['guidance'] >= 50]
+        df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
+        # df_final = df_final[(df_final['guidance'] == 100)]
+        print(f'Data for training: {len(df_final)}')
+        df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         print(f'Data for training: {len(df_final)}')
         df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
     else:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='test')
-        # df_final = df_final[df_final['guidance'] >= 50]
-        print(f'Data for training: {len(df_final)}')
+        print(f'Data for test: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         df_final.to_csv(os.path.join(args.save_folder, f'test.csv'), sep='\t', index=False, header=True)
 
