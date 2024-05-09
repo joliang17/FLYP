@@ -328,6 +328,7 @@ def main():
                 cur_sp_path = os.path.join(cur_sp_path, post_fix)
                 list_img_cate = os.listdir(cur_sp_path)
                 cur_sp_name += '/' + post_fix.replace('_', ' ')
+                cur_sp_f += '/' + post_fix
 
             cur_y = openai_classnames.index(cur_sp_name)
 
