@@ -515,6 +515,9 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
 
         process_train_stat(results, train_stats, logger)
 
+        if 'dict_img_guid' in results:
+            train_stats['dict_img_guid'] = results['dict_img_guid']
+
         return info
 
     if progress_sample:

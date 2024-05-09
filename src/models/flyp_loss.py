@@ -691,7 +691,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
             else:
                 num_batches = num_batch_ori
         logger.info(f"Num batches is {num_batches}")
-
+        
     if args.scheduler in ('default', 'drestart'):
         scheduler = cosine_lr(optimizer, args.lr, args.warmup_length, (args.epochs + 1) * num_batches, args.min_lr)
     elif args.scheduler in ('default_slower',):
@@ -996,7 +996,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         # Save the prediction score for each image and prompt for confusion matrix
         if args.debug:
             for i in range(20):
-                model_path = f'checkpoints/flyp_loss_v752_all_3694/_BS256_WD0.2_LR1e-05_run1/checkpoint_{i}.pt'
+                model_path = f'checkpoints/flyp_loss_imgnet_base/_BS300_WD0.1_LR1e-05_run1/checkpoint_{i}.pt'
                 logger.info(f"evaluation on {model_path} ...")
 
                 # load model
@@ -1008,7 +1008,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 classification_head_new = generate_class_head(model, args, epoch)
                 # evaluate on training set
                 eval_results = evaluate(model, args, classification_head_new, epoch_stats, progress_guid=True, logger=logger)
-
+                
+                pdb.set_trace()
                 dict_best_guid = epoch_stats['dict_img_guid']
                 print(f"{len(dict_best_guid)}")
 

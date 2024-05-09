@@ -55,8 +55,12 @@ class CsvDataset(Dataset):
 
         if uniform_guid:
             # only train on a uniformly distributed dataset
-            df = df[df['guidance'] == 100]
-            df = df.sample(n=min(len(df), 30000), replace=False, ignore_index=True)
+            if 'train_cnt' in df.columns:
+                df = df[(df['guidance'] == 100) & (df['train_cnt'] <= 50)]
+                df = df.sample(n=min(len(df), 10000), replace=False, ignore_index=True)
+            else:
+                df = df[df['guidance'] == 100]
+                df = df.sample(n=min(len(df), 30000), replace=False, ignore_index=True)
 
             logging_input(f'sampling total data {len(df)}.', logger)
 
