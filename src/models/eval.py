@@ -499,6 +499,15 @@ def evaluate(image_classifier, args, classification_head, train_stats={}, logger
             train_stats["Median Accuracy"] = round(median_acc, 4)
             train_stats["Few Accuracy"] = round(few_acc, 4)
 
+            list_acc = [[key, value[0] / value[1], value[1], value[2]] for key, value in results['class_top1'].items()]
+            list_acc = sorted(list_acc, key=lambda x: x[1], reverse=False)
+            dataset_name = 'ImageNetLT'
+            for pair in list_acc:
+                # logging_input(f"{dataset_name} Class Top-1 accuracy: {pair[0]} {pair[1]:.4f}", logger)
+                train_stats[dataset_name + f" Class {pair[0]} Accuracy"] = round(pair[1], 4)
+                train_stats[dataset_name + f" Class {pair[0]} Number"] = pair[2]
+                train_stats[dataset_name + f" Class {pair[0]} Train Cnt"] = pair[3]
+
         if 'progress_res' in results:
             dict_guid_prob = results['progress_res']
             dict_guid_prob_new = {key: [[item[0] for item in values], [item[1] for item in values], [item[2] for item in values]] for key, values in dict_guid_prob.items()}

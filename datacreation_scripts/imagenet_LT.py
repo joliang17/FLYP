@@ -318,9 +318,6 @@ def main():
         threshold = 0.28
         Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
-        # if args.gene_constr != '':
-        #     Dict_filt, img_cnt_1, uniq_cnt = filter_generated_img(args.gene_constr, Dict_filt)
-
         all_cnt = 0
         filtered_cnt = 0
         for cur_sp_f in tqdm(img_sp_folder):
@@ -395,32 +392,25 @@ def main():
         # df = df[df['img_id'] < 0]
 
         df_sel_final = merge_with_prompt(df_sel, df_label_temp, merge_type='curriculum')
-        # df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
+        df_sel_final = df_sel_final[(df_sel_final['guidance'] >= 30)]
         print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final = pd.merge(df_sel_final, train_class_cnt, on='label', how='inner')
         print(f'Data for curriculum: {len(df_sel_final)}')
-        # df_sel_final = df_sel_final[df_sel_final['train_cnt'] <= 20]
-        # print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
     if not args.test:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='train')
-        # df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
-        # df_final = df_final[(df_final['guidance'] == 100)]
+        df_final = df_final[(df_final['guidance'] >= 30)]
         print(f'Data for training: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         print(f'Data for training: {len(df_final)}')
-        # df_final = df_final[df_final['train_cnt'] <= 20]
-        # print(f'Data for training: {len(df_final)}')
         df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
     else:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='test')
         print(f'Data for test: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
-        # df_final = df_final[df_final['train_cnt'] <= 20]
-        # print(f'Data for test: {len(df_final)}')
         df_final.to_csv(os.path.join(args.save_folder, f'test.csv'), sep='\t', index=False, header=True)
 
     return 

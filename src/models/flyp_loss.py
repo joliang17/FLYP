@@ -197,21 +197,29 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
                 cls_label = list_k[1].replace(' Accuracy', '')
                 cur_label_name = f"Class {cls_label}"
                 if cur_label_name not in class_stats:
-                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    cur_res = [0] * 3 * len(args.eval_datasets)
                     class_stats[cur_label_name] = cur_res
                 class_stats[cur_label_name][2 * ds_id] = v
             elif 'Number' in k:
                 cls_label = list_k[1].replace(' Number', '')
                 cur_label_name = f"Class {cls_label}"
                 if cur_label_name not in class_stats:
-                    cur_res = [0] * 2 * len(args.eval_datasets)
+                    cur_res = [0] * 3 * len(args.eval_datasets)
                     class_stats[cur_label_name] = cur_res
                 class_stats[cur_label_name][2 * ds_id + 1] = v
+            elif 'Cnt' in k:
+                cls_label = list_k[1].replace(' Train Cnt', '')
+                cur_label_name = f"Class {cls_label}"
+                if cur_label_name not in class_stats:
+                    cur_res = [0] * 3 * len(args.eval_datasets)
+                    class_stats[cur_label_name] = cur_res
+                class_stats[cur_label_name][2 * ds_id + 2] = v
 
-        list_colum = [''] * 2 * len(args.eval_datasets)
+        list_colum = [''] * 3 * len(args.eval_datasets)
         for i in range(len(args.eval_datasets)):
             list_colum[2 * i] = args.eval_datasets[i]
             list_colum[2 * i + 1] = args.eval_datasets[i] + ' Count'
+            list_colum[2 * i + 2] = args.eval_datasets[i] + ' Train Cnt'
 
         class_stats_df = pd.DataFrame.from_dict(class_stats, orient='index', columns=list_colum)
         class_stats_df.to_csv(log_dir + f'/class_stats{epoch}.tsv', sep='\t')
