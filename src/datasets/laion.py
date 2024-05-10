@@ -70,6 +70,7 @@ class CsvDataset(Dataset):
             # only positive is included if guid != 100
             df_unenhanced = df[df['img_id'] < 0]
             df = df[(df['guidance'] == guidance) & (df['img_id'] >= 0)]
+            df_ori_data = df[(df['guidance'] == 100) & (df['img_id'] >= 0)]
             if datalimit != -1 and len(df) > datalimit:
                 df = df.sample(n=datalimit, replace=False, ignore_index=True)
                 logging_input(f'sampling guid={guidance} with {len(df)} samples.', logger)
@@ -79,15 +80,11 @@ class CsvDataset(Dataset):
                 df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
 
             if 'imagenet' in input_filename and 'train' in input_filename:
-                df_unenhanced = df_unenhanced.sample(frac=0.2, replace=False)
-                df = df.sample(frac=0.2, replace=False)
+                df = pd.concat([df, df_unenhanced, df_ori_data])
+            else:
+                df = pd.concat([df, df_unenhanced])
 
-            df = pd.concat([df, df_unenhanced])
             logging_input(f'merged with unenhanced data.', logger)
-
-        elif not uniform_guid:
-            if 'imagenet' in input_filename and 'train' in input_filename:
-                df = df.sample(frac=0.2, replace=False)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
