@@ -1,4 +1,5 @@
 from .openai_imagenet_template import openai_imagenet_template
+from .openai_imagenet_template_single import openai_imagenet_template_single
 from .openai_imagenet_template_reduced import openai_imagenet_template_reduced
 from .simple_template import simple_template
 from .fmow_template import fmow_template

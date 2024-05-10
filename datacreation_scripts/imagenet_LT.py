@@ -239,7 +239,8 @@ openai_classnames = [
     "bolete", "corn cob", "toilet paper"
 ]
 
-template = getattr(templates, 'openai_imagenet_template_reduced')
+template = getattr(templates, 'openai_imagenet_template_single')
+
 
 def filter_img(clip_path: str, threshold: float):
     dict_filt = dict()
@@ -250,6 +251,7 @@ def filter_img(clip_path: str, threshold: float):
         list_filtered = list(dict_clip_res.items())
         list_filtered = [[item[0].split('='), item[1][0], item[1][1]] for item in
                          list_filtered]  # list_filtered = [[sp_name, cate, img_id], score]
+        # list_filtered = [[item[0][0], item[0][1], item[0][2], item[1], item[2]] for item in list_filtered]
         print(f"length before filter: {len(list_filtered)}")
         list_filtered = [item[0] for item in list_filtered if item[1] >= threshold]
         print(f"length after filter: {len(list_filtered)}")
@@ -313,7 +315,7 @@ def main():
     if args.curriculum:
         Dict_filt = dict()
         clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
-        threshold = 0.25
+        threshold = 0.28
         Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
         # if args.gene_constr != '':
@@ -393,26 +395,32 @@ def main():
         # df = df[df['img_id'] < 0]
 
         df_sel_final = merge_with_prompt(df_sel, df_label_temp, merge_type='curriculum')
-        df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
+        # df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
         print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final = pd.merge(df_sel_final, train_class_cnt, on='label', how='inner')
         print(f'Data for curriculum: {len(df_sel_final)}')
+        # df_sel_final = df_sel_final[df_sel_final['train_cnt'] <= 20]
+        # print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
     if not args.test:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='train')
-        df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
+        # df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
         # df_final = df_final[(df_final['guidance'] == 100)]
         print(f'Data for training: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         print(f'Data for training: {len(df_final)}')
+        # df_final = df_final[df_final['train_cnt'] <= 20]
+        # print(f'Data for training: {len(df_final)}')
         df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
     else:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='test')
         print(f'Data for test: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
+        # df_final = df_final[df_final['train_cnt'] <= 20]
+        # print(f'Data for test: {len(df_final)}')
         df_final.to_csv(os.path.join(args.save_folder, f'test.csv'), sep='\t', index=False, header=True)
 
     return 
