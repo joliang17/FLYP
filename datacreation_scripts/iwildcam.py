@@ -186,11 +186,13 @@ def main(args):
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
     # df_final = df_final[df_final['guidance'] >= 50]
+    df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
     print(f'Data for training: {len(df_final)}')
     df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
 
     df_sel_final = merge_with_prompt(df_sel, label_to_name, merge_type='curriculum')
     # df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
+    df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
     print(f'Data for curriculum: {len(df_sel_final)}')
     df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 

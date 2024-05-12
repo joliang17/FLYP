@@ -122,6 +122,7 @@ def load_data(logger, args, clip_encoder, cur_guidance=None, cur_str_times=1, ep
                 wandb.log({"Epoch": epoch, "Porportion of 100": ori_proportion})
 
     # load dataloader
+    # cur_guidance = 30
     img_text_data = get_data(args, (clip_encoder.train_preprocess, clip_encoder.val_preprocess), epoch=0,
                              merge_ori=args.merge_ori, subsample=args.subsample, return_img_id=True,
                              datalimit=args.datalimit, guidance=cur_guidance, list_imgs=list_imgs,
@@ -553,8 +554,8 @@ def init_guidance_setting(args, logger, ):
             len_ori = len(df_ori[df_ori['guidance'] == 100])
             num_batch_ori = int(len_ori / args.batch_size)  # num of batch in non curriculum epoch (update iterations)
             # keep number of iteration during the entire training process the same
-            if args.train_dataset == 'ImageNet':
-                num_batch_ori = num_batch_ori // 5
+            # if args.train_dataset == 'ImageNet':
+            #     num_batch_ori = num_batch_ori // 5
             total_iteration = num_batch_ori * args.curriculum_epoch * args.batch_size
 
             # estimate the number of times loading for each guid
@@ -715,7 +716,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     next_change_guid = False
     pre_guidance = None
     start_uniform = 0
-
+    
     if args.train_dataset == 'ImageNet':
         stats = general_eval(model, args, [], 0, logger=logger, print_log=True, print_class=True,
                              log_dir=log_dir)
@@ -826,15 +827,6 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id, cur_guidance, cur_str_times = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
 
-                        # find the largest guidance based on progress
-                        # eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
-                        #                          progress_ma=progress_ma)
-                        # res_progress, _, last_perform, saved_diff, _ = eval_res
-                        # with open(f"{log_dir}/progress{cnt}.pkl", 'wb') as f:
-                        #     pickle.dump(saved_diff, f)
-                        # cnt += 1
-
-                    # cur_guidance = 100  # cur_guidance_id = list_guidance.index(cur_guidance)
                 elif args.progress_guid:
                     # select next guid based on progress
                     if args.uniform_set and not next_change_guid:
@@ -862,6 +854,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                             cur_guidance_id = list_guidance.index(cur_guidance)
                             cur_str_times = 0
                         else:
+                            
+                            # evaluate the model after uniformly running 
+                            logger.info(f"Formal evaluation ...")
+                            stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
+                                                log_dir=log_dir)
+
                             # find the largest guidance based on progress
                             eval_res = progress_eval(model, args, last_perform, epoch, logger, progress_guid=True,
                                                      progress_ma=progress_ma)
@@ -1031,9 +1029,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Evaluate
-        logger.info(f"Formal evaluation ...")
-        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
-                             log_dir=log_dir)
+        if epoch >= 15:
+            logger.info(f"Formal evaluation ...")
+            stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
+                                log_dir=log_dir)
 
     if args.save is not None:
         return model_path

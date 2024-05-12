@@ -239,6 +239,7 @@ openai_classnames = [
     "bolete", "corn cob", "toilet paper"
 ]
 
+openai_classnames = [item.replace('/', 'or') for item in openai_classnames]
 template = getattr(templates, 'openai_imagenet_template_single')
 
 
@@ -314,8 +315,8 @@ def main():
     
     if args.curriculum:
         Dict_filt = dict()
-        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score.pkl'
-        threshold = 0.28
+        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score_test.pkl'
+        threshold = 0.30
         Dict_filt, img_cnt = filter_img(clip_path, threshold)
 
         all_cnt = 0
@@ -379,20 +380,20 @@ def main():
         print(f"selecting images with all guidance for guidance selection")
         df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
         df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
-        sel_img = df_count[df_count['guidance'] == 7].sample(n=100, replace=False, random_state=42)[
+        sel_img = df_count[df_count['guidance'] == 6].sample(n=100, replace=False, random_state=42)[
             'img_name'].values.tolist()
         df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
         df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
             lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
-        # exclude validate set from training samples
+        # # exclude validate set from training samples
         df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
 
         # df_sel = df[df['img_id'] >= 0]
         # df = df[df['img_id'] < 0]
 
         df_sel_final = merge_with_prompt(df_sel, df_label_temp, merge_type='curriculum')
-        df_sel_final = df_sel_final[(df_sel_final['guidance'] >= 30)]
+        # df_sel_final = df_sel_final[(df_sel_final['guidance'] >= 30)]
         print(f'Data for curriculum: {len(df_sel_final)}')
         df_sel_final = pd.merge(df_sel_final, train_class_cnt, on='label', how='inner')
         print(f'Data for curriculum: {len(df_sel_final)}')
@@ -401,7 +402,7 @@ def main():
     if not args.test:
         # merge prompts
         df_final = merge_with_prompt(df, df_label_temp, merge_type='train')
-        df_final = df_final[(df_final['guidance'] >= 30)]
+        # df_final = df_final[(df_final['guidance'] >= 30)]
         print(f'Data for training: {len(df_final)}')
         df_final = pd.merge(df_final, train_class_cnt, on='label', how='inner')
         print(f'Data for training: {len(df_final)}')
@@ -422,10 +423,11 @@ if __name__ == "__main__":
     parser.add_argument('--test', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
     parser.add_argument('--save_folder', default='../data/imagenet/metadata/baseline/')
-    parser.add_argument('--input_folder', default='/fs/nexus-projects/wilddiffusion/gene_diffcls/data/imagenet/train_new')
+    parser.add_argument('--input_folder', default='/fs/nexus-projects/wilddiffusion/gene_diffcls/data/imagenet/train_v2')
     parser.add_argument('--data_folder', default='/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls')
     args = parser.parse_args()
     # args.gene_constr = '../data/metadata/used_imgid/used_imgid_v2.pkl'
     os.makedirs(args.save_folder, exist_ok=True)
+    # args.curriculum = True
 
     main()

@@ -79,7 +79,7 @@ class CsvDataset(Dataset):
             if subsample:
                 df_unenhanced = df_unenhanced.sample(frac=0.5, replace=False, ignore_index=True)
 
-            if 'imagenet' in input_filename and 'train' in input_filename:
+            if 'imagenet' in input_filename and 'train' in input_filename and guidance != 100:
                 df = pd.concat([df, df_unenhanced, df_ori_data])
             else:
                 df = pd.concat([df, df_unenhanced])
