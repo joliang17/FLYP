@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=baseline
+#SBATCH --job-name=v752
 #SBATCH --account=tianyi-prj-cmsc
 #SBATCH --time=50:00:00
 #SBATCH --gpus=h100:1
@@ -43,18 +43,16 @@ root_folder=".."
 # location of generated train.csv / curriculum.csv / used pkl ..
 IMG_FOLDER="${root_folder}/data/train_new"
 META_FOLDER="${root_folder}/data/metadata"
-SAVED_FOLDER="${META_FOLDER}/difficult_2_sample/"
+SAVED_FOLDER="${META_FOLDER}/clip_progress_difficult_2022_5_onlyguid/"
 
-
-#python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v2.pkl" --data_folder="${root_folder}" --sample_guid
-
+python datacreation_scripts/iwildcam.py --save_folder="${SAVED_FOLDER}" --input_folder="${IMG_FOLDER}" --curriculum --gene_constr="${META_FOLDER}/used_imgid/used_imgid_v5.pkl" --data_folder="${root_folder}"
 
 # uniform dataset + guid >= 50
-python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=100 --model=ViT-L/14 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="flyp_loss_base" --baseline --scheduler=default --slurm_job_id=$SLURM_JOB_ID --debug
+python src/main.py --train-dataset=IWildCamIDVal --epochs=20 --lr=1e-5 --wd=0.2 --batch-size=100 --model=ViT-L/14 --eval-datasets=IWildCamIDVal,IWildCamID,IWildCamOOD --template=iwildcam_template  --save="./checkpoints/" --data-location="${root_folder}/data/iwildcam/" --ft_data="${SAVED_FOLDER}train.csv" --ft_data_test="${SAVED_FOLDER}curriculum.csv"  --cache_folder="${cache_folder}" --csv-img-key filepath --csv-caption-key title --workers=4 --exp_name="v715"  --curriculum --curriculum_epoch=15 --progress_guid --uniform_set --merge_ori --progress_metric=Prob --scheduler=default --workers=4 --slurm_job_id=$SLURM_JOB_ID --debug
 
 
 ECODE=$?
-
+	
 echo "Job finished with exit code ${ECODE} ${date}"
 
 # Exit with the cached exit code
