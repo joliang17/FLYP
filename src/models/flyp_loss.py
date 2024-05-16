@@ -234,6 +234,8 @@ def general_eval(model, args, stats, epoch: int, logger, print_log=False, print_
                        epoch_stats.items()}
 
     if log_dir is not None:
+        if 'dict_img_guid' in epoch_stats:
+            del epoch_stats['dict_img_guid']
         stats.append(epoch_stats)
         stats_df = pd.DataFrame(stats)
         stats_df.to_csv(log_dir + '/stats.tsv', sep='\t')
