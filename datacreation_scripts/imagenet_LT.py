@@ -315,7 +315,7 @@ def main():
     
     if args.curriculum:
         Dict_filt = dict()
-        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score_test.pkl'
+        clip_path = f'{args.data_folder}/data/imagenet/LT_metadata/clip_score_v2.pkl'
         threshold = 0.30
         Dict_filt, img_cnt = filter_img(clip_path, threshold)
 

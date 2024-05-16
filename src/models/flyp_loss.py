@@ -15,6 +15,7 @@ from src.models.modeling import ClassificationHead, CLIPEncoder, ImageClassifier
 from src.models.utils import cosine_lr, torch_load, LabelSmoothing, get_logits
 from src.models.zeroshot import get_zeroshot_classifier
 from src.datasets.laion import get_data
+from src.models.auto_ft_loss import LearnedLoss
 import src.datasets as datasets
 import scipy.stats as stats
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
@@ -26,6 +27,36 @@ import pdb
 import math
 import wandb
 import numpy as np
+
+# loss_weight = {
+#     "lossw_ce": 1.0,
+#     "lossw_dcm": 0.6223533993940668,
+#     "lossw_entropy": 0.0004681301224610,
+#     "lossw_flyp": 1.9056561834926824,
+#     "lossw_hinge": 0.00015961210291135,
+#     "lossw_l1init": 0.00154953790283812,
+#     "lossw_l1zero": 0.00019307479126688,
+#     "lossw_l2init": 0.0001726603186429,
+#     "lossw_l2zero": 0.0001090242975318,
+#     "seed": 34,
+#     "lr": 0.0001362453128517931,
+#     "wd": 0.604213756042692
+# }
+loss_weight = {'lossw_ce': 0.0038931791577964466, 'lossw_dcm': 0.20002627489335106, 'lossw_entropy': 0.0010228233648757763, 'lossw_flyp': 0.03409227121914931, 'lossw_hinge': 0.00046238687410335026, 'lossw_l1init': 0.07907648963943414, 'lossw_l1zero': 0.00082890665050255, 'lossw_l2init': 0.010043743684928354, 'lossw_l2zero': 0.024814537148575403, 'seed': 6, 'lr': 0.0004488063680324601, 'wd': 0.9790573204484073}
+
+def get_loss_weights(losses, hparams):
+    """Get loss weights from hparams, setting missing loss weight to 1.0."""
+    global_loss_weight_keys = [k for k in sorted(hparams.keys()) if "lossw" in k and "_lossw" not in k]
+    # Check for missing loss weight and set it to 1.0
+    for loss_type in losses:
+        loss_weight_key = f"lossw_{loss_type}"
+        if loss_weight_key not in global_loss_weight_keys:
+            hparams[loss_weight_key] = 1.0
+            global_loss_weight_keys.append(loss_weight_key)
+    global_loss_weights = torch.tensor([hparams[k] for k in sorted(global_loss_weight_keys)])
+
+    loss_weights = global_loss_weights
+    return loss_weights
 
 def set_seed(seed: int = 42, if_torch: bool=True) -> None:
     """
@@ -45,7 +76,7 @@ def set_seed(seed: int = 42, if_torch: bool=True) -> None:
 
 set_seed(0)
 
-def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1):
+def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None, ctype='out_curri', loop_times=1, direction='increase'):
     # sequentially use guidance 
     if ctype == 'no_curri':
         # iteratively loop over all guidance
@@ -56,19 +87,37 @@ def seq_curri_guid(list_guidance: List, cur_guidance_id=None, cur_str_times=None
         return cur_guidance_id, cur_guidance
 
     elif ctype == 'in_curri':
-        # have fixed curriculum length
-        if cur_str_times < loop_times:
-            # cur_guidance_id unchanged 
-            cur_str_times += 1
-        else:
-            cur_str_times = 1
+        # recursively iterate over guidance
+        if cur_guidance_id == len(list_guidance) - 1:
+            # already the largest id
+            direction = 'decrease'
+            cur_guidance_id -= 1
+        elif cur_guidance_id == 0:
+            # already the smallest id
+            direction = 'increase'
             cur_guidance_id += 1
+        else:
+            # in process
+            if direction == 'increase':
+                cur_guidance_id += 1
+            else:
+                cur_guidance_id -= 1
 
-            if cur_guidance_id >= len(list_guidance):
-                cur_guidance_id = len(list_guidance) - 1
+        # # have fixed curriculum length
+        # if cur_str_times < loop_times:
+        #     # cur_guidance_id unchanged 
+        #     cur_str_times += 1
+        # else:
+        #     cur_str_times = 1
+        #     cur_guidance_id += 1
+
+        if cur_guidance_id >= len(list_guidance):
+            cur_guidance_id = len(list_guidance) - 1
+        if cur_guidance_id < 0:
+            cur_guidance_id = 0
 
         cur_guidance = list_guidance[cur_guidance_id]
-        return cur_guidance_id, cur_guidance, cur_str_times
+        return cur_guidance_id, cur_guidance, cur_str_times, direction
 
     elif ctype == 'out_curri':
         cur_guidance = 100
@@ -602,6 +651,20 @@ def init_guidance_setting(args, logger, ):
 def flyp_loss(args, clip_encoder, classification_head, logger):
     model_path = ''
 
+    loss_weight = {
+        "lossw_ce": 1.0,
+        "lossw_dcm": 0.6223533993940668,
+        "lossw_entropy": 0.0004681301224610,
+        "lossw_flyp": 1.9056561834926824,
+        "lossw_hinge": 0.00015961210291135,
+        "lossw_l1init": 0.00154953790283812,
+        "lossw_l1zero": 0.00019307479126688,
+        "lossw_l2init": 0.0001726603186429,
+        "lossw_l2zero": 0.0001090242975318,
+        "seed": 34,
+        "lr": 0.0001362453128517931,
+        "wd": 0.604213756042692
+    }
     assert args.train_dataset is not None, "Please provide a training dataset."
     logger.info('Fine-tuning Using FLYP Loss')
     model = clip_encoder
@@ -609,8 +672,12 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     preprocess_fn = clip_encoder.train_preprocess
     clip_encoder.process_images = True
     print_every = 100
-    clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1,
-                            use_horovod=False)
+    initial_params = [p for p in model.parameters()]
+    losses = 'ce dcm entropy flyp hinge l1init l1zero l2init l2zero'
+    losses = losses.split()
+    loss_weight = get_loss_weights(losses, loss_weight)
+    autoft_loss_fn = LearnedLoss(losses=losses, loss_weights=loss_weight, initial_params=initial_params)
+    clip_loss_fn = ClipLoss(local_loss=False, gather_with_grad=False, cache_labels=True, rank=0, world_size=1, use_horovod=False)
 
     log_dir = "expt_logs/" + args.exp_name + "/" + "_BS" + str(args.batch_size) + "_WD" + str(args.wd) + "_LR" + str(
         args.lr) + "_run" + str(args.run)
@@ -625,15 +692,15 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     ############################
     # load finetuned model here
     if args.cont_finetune:
-        model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
-                                  f'checkpoint_15.pt')
+        # model_path = os.path.join("checkpoints_base/iwildcam/flyp_loss_ori_eval/_BS256_WD0.2_LR1e-05_run1",
+        #                           f'checkpoint_15.pt')
 
-        # model_path = os.path.join("checkpoints/flyp_loss_v7152/_BS300_WD0.2_LR1e-05_run1",
-        #                           f'checkpoint_1.pt')
+        model_path = os.path.join("/fs/nexus-projects/wilddiffusion/gene_diffcls/FYLP/checkpoints/flyp_loss_v752_large/_BS100_WD0.2_LR1e-05_run1/",
+                                  f'checkpoint_16.pt')
         logger.info('Loading model ' + str(model_path))
         checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint)  
-        # model.load_state_dict(checkpoint['model_state_dict'])
+        # model.load_state_dict(checkpoint)  
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     ############################
     # Data initialization
@@ -652,7 +719,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         wandb.init(project="sd_exprs", config=args, name=args.exp_name, group=args.wandb_group_name, tags=[args.wandb_tag, ])
         wandb.watch(model, log="gradients", log_freq=100)
 
-    # classification_head.train()
+    classification_head.train()
     model.train()
 
     clip_params = list(model.parameters())
@@ -716,10 +783,11 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
     next_change_guid = False
     pre_guidance = None
     start_uniform = 0
+    direction = 'increase'
     
-    if args.train_dataset == 'ImageNet':
-        stats = general_eval(model, args, [], 0, logger=logger, print_log=True, print_class=True,
-                             log_dir=log_dir)
+    # if args.train_dataset == 'ImageNet':
+    #     stats = general_eval(model, args, [], 0, logger=logger, print_log=True, print_class=True,
+    #                          log_dir=log_dir)
 
     if args.progress_sample:
         if not load_ckpt:
@@ -773,7 +841,7 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
         id_flyp_loss_sum = 0
         model.train()
         model = model.cuda()
-        # classification_head.train()
+        classification_head.train()
 
         # list_loss_pairs = []
         for i in trange(num_batches):
@@ -823,8 +891,8 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                         cur_guidance_id, cur_guidance = guid_res
                     else:
                         guid_res = seq_curri_guid(list_guidance, cur_guidance_id=cur_guidance_id,
-                                                  cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times)
-                        cur_guidance_id, cur_guidance, cur_str_times = guid_res
+                                                  cur_str_times=cur_str_times, ctype='in_curri', loop_times=loop_times, direction=direction)
+                        cur_guidance_id, cur_guidance, cur_str_times, direction = guid_res
                         logger.info(f"new guid={cur_guidance}, cur_guidance_id={cur_guidance_id}")
 
                 elif args.progress_guid:
@@ -943,18 +1011,24 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
                 ft_iterator = iter(ft_dataloader)
                 ft_batch = next(ft_iterator)
 
-            ft_image, ft_text, ft_imgid = ft_batch
+            ft_image = ft_batch[0]
+            ft_text = ft_batch[1]
+            labels = ft_batch[2]
+            ft_imgid = ft_batch[5]
+            # ft_image, ft_text, ft_imgid, labels = ft_batch
 
             ft_image, ft_text = ft_image.cuda(), ft_text.cuda()
+            labels = labels.cuda()
             ft_image_features, ft_text_features, logit_scale2 = model(ft_image, ft_text)
             if len(logit_scale2.shape) >= 1:
                 logit_scale2 = logit_scale2[0]
-            ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
+            if args.loss == 'autoft':
+                logits = classification_head(ft_image_features)
+                ft_clip_loss = autoft_loss_fn(model, logits, labels, ft_image_features, ft_text_features, logit_scale2)
+            else:
+                ft_clip_loss_peritem = clip_loss_fn(ft_image_features, ft_text_features, logit_scale2)
+                ft_clip_loss = torch.mean(ft_clip_loss_peritem)
 
-            img_id_loss = list(zip(ft_imgid.detach().cpu().numpy(), ft_clip_loss_peritem.detach().cpu().numpy()))
-            # list_loss_pairs.extend(img_id_loss)
-
-            ft_clip_loss = torch.mean(ft_clip_loss_peritem)
             ft_clip_loss.backward()
             optimizer.step()
 
@@ -1029,10 +1103,10 @@ def flyp_loss(args, clip_encoder, classification_head, logger):
 
         #############################################
         # Evaluate
-        if epoch >= 15:
-            logger.info(f"Formal evaluation ...")
-            stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
-                                log_dir=log_dir)
+        # if epoch >= 15:
+        logger.info(f"Formal evaluation ...")
+        stats = general_eval(model, args, stats, epoch, logger=logger, print_log=True, print_class=True,
+                            log_dir=log_dir)
 
     if args.save is not None:
         return model_path

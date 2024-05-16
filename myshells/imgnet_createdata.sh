@@ -20,7 +20,7 @@ source /fs/nexus-scratch/yliang17/miniconda3/bin/activate diffu
 
 ORI_DATA="/fs/nexus-datasets/ImageNet"
 TRAIN_FOLDER="/fs/nexus-projects/wilddiffusion/gene_diffcls/data/imagenet/train_v2"
-SAVED_FOLDER="../data/imagenet/metadata/imgnet_aug_v4/"
+SAVED_FOLDER="../data/imagenet/metadata/imgnet_aug_v6/"
 
 # # train
 python datacreation_scripts/imagenet_LT.py --save_folder=${SAVED_FOLDER} --input_folder=${TRAIN_FOLDER} --curriculum

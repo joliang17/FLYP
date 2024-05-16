@@ -7,6 +7,7 @@ import pickle
 from sklearn.model_selection import train_test_split
 from typing import List, Dict
 from tqdm import tqdm
+import numpy as np
 
 
 def filter_img(clip_path: str, threshold: float):
@@ -96,6 +97,11 @@ def main(args):
 
         all_cnt = 0
         filtered_cnt = 0
+        if args.seed_selection != '':
+            list_seed = args.seed_selection.split(',')
+        else:
+            list_seed = None
+
         for cur_sp_f in tqdm(img_sp_folder):
             cur_sp_path = os.path.join(args.input_folder, cur_sp_f)
             cur_sp_name = cur_sp_f.replace('_', ' ')
@@ -105,6 +111,8 @@ def main(args):
             for cate in list_img_cate:
                 cur_strength = int(cate.split('_')[0].replace('Strength', ''))
                 cur_seed = int(cate.split('_')[-1].replace('seed', ''))
+                if list_seed is not None and str(cur_seed) not in list_seed:
+                    continue
                 cur_cate_path = os.path.join(cur_sp_path, cate)
                 list_sub_img = os.listdir(cur_cate_path)
                 list_sub_img = [item for item in list_sub_img if 'jpg' in item]
@@ -153,23 +161,23 @@ def main(args):
     Dict_img_id_ori = {list_ori_guid[i]: i + 1 for i in range(len(list_ori_guid))}
     df.loc[:, 'img_id'] = df['img_name'].apply(lambda x: Dict_img_id[x] if x in Dict_img_id else -Dict_img_id_ori[x])
 
-    if not args.sample_guid:
+    # if not args.sample_guid:
         # select image_id with all guidance
-        print(f"selecting images with all guidance for guidance selection")
-        df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
-        df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
-        sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
-            'img_name'].values.tolist()
-        df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
-        df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
-            lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
+        # print(f"selecting images with all guidance for guidance selection")
+        # df_count = df.groupby(['img_name', 'guidance']).count().reset_index()
+        # df_count = df_count.groupby(['img_name', ]).count()['guidance'].reset_index()
+        # sel_img = df_count[df_count['guidance'] == 7].sample(n=2000, replace=False, random_state=42)[
+        #     'img_name'].values.tolist()
+        # df_sel = df[df['img_name'].isin(sel_img)].reset_index(drop=True)
+        # df_sel = df_sel.groupby(['img_name', 'guidance']).apply(
+        #     lambda x: x.sample(n=1, replace=False, random_state=42)).reset_index(drop=True)
 
         # exclude validate set from training samples
-        df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
+        # df = df[~df['img_name'].isin(sel_img)].reset_index(drop=True)
 
         # df_sel = df[df['img_id'] >= 0]
         # df = df[df['img_id'] < 0]
-    else:
+    # else:
         # Method 1
         # # select equal number of guidance for each seed images
         # # select 1 generated images per guidance for each samples
@@ -180,19 +188,22 @@ def main(args):
         # Method 2
         # select original image as other part of training
         # select generated images + corresponding original image as candidates
-        df_sel = df[df['img_id'] >= 0]
+        # df_sel = df[df['img_id'] >= 0]
         # df = df[df['img_id'] < 0]
 
     # merge prompts
     df_final = merge_with_prompt(df, label_to_name, merge_type='train')
-    # df_final = df_final[df_final['guidance'] >= 50]
-    df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
+    df_final = df_final[df_final['guidance'] >= 50]
+    # df_final = df_final[(df_final['guidance'] <= 50) | (df_final['guidance'] == 100)]
     print(f'Data for training: {len(df_final)}')
+    num_all = len(df_final)
+    num_generated = num_all - len(df_train_ori) * 2
+    print(f'Data generated: {num_generated}, num per guidance: {num_generated//3}, ratio: {np.round(num_generated//(256000), 4)}, pos ratio: {np.round(num_generated//(160000), 4)}')
     df_final.to_csv(os.path.join(args.save_folder, f'train.csv'), sep='\t', index=False, header=True)
 
     df_sel_final = merge_with_prompt(df_sel, label_to_name, merge_type='curriculum')
-    # df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
-    df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
+    df_sel_final = df_sel_final[df_sel_final['guidance'] >= 50]
+    # df_sel_final = df_sel_final[(df_sel_final['guidance'] <= 50) | (df_sel_final['guidance'] == 100)]
     print(f'Data for curriculum: {len(df_sel_final)}')
     df_sel_final.to_csv(os.path.join(args.save_folder, f'curriculum.csv'), sep='\t', index=False, header=True)
 
@@ -203,6 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
     parser.add_argument('--sample_guid', action=argparse.BooleanOptionalAction)
     parser.add_argument('--gene_constr', default='')
+    parser.add_argument('--seed_selection', default='')
     parser.add_argument('--save_folder', default='../data/metadata/clip_progress_difficult_v2')
     parser.add_argument('--input_folder', default='../data/train_new')
     parser.add_argument('--data_folder', default='/fs/nexus-scratch/yliang17/Research/diffusion/gene_diffcls')

@@ -60,6 +60,8 @@ def parse_arguments():
 
     ######################################
     # added args
+    parser.add_argument("--loss", type=str, default='default', help="Path to csv filewith training data", )
+
     parser.add_argument('--curriculum', action=argparse.BooleanOptionalAction)
 
     parser.add_argument('--baseline', action=argparse.BooleanOptionalAction)

@@ -490,7 +490,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
 
 
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_proportion=None, uniform_guid=False,
-                    return_guidance=False, return_img_id=False, include_neg=False, datalimit=-1, logger=None,
+                    return_guidance=False, return_img_id=False, include_neg=False, datalimit=-1, logger=None, 
                     list_imgs=None, merge_ori=False, subsample=False, return_train_cnt=False, progress_guid=False):
     # normal training / curriculum eval on test dataset
     input_filename = args.ft_data if is_train else args.ft_data_test
@@ -504,12 +504,12 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, guidance=None, ori_p
     else:
         label_key = None
 
-    if not is_train:
-        label_key = 'label'
+    # if not is_train:
+    label_key = 'label'
 
     dataset = CsvDataset(input_filename, preprocess_fn, logger=logger, img_key=args.csv_img_key,
                          caption_key=args.csv_caption_key, sep=args.csv_separator, label_key=label_key,
-                         guidance=guidance, datalimit=datalimit, uniform_guid=uniform_guid, list_imgs=list_imgs,
+                         guidance=guidance, datalimit=datalimit, uniform_guid=uniform_guid, list_imgs=list_imgs, 
                          return_guidance=return_guidance, merge_ori=merge_ori, subsample=subsample,
                          return_img_id=return_img_id, ori_proportion=ori_proportion, include_neg=include_neg, return_train_cnt=return_train_cnt)
     num_samples = len(dataset)
